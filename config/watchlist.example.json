@@ -1,0 +1,15 @@
+[
+  {
+    "hex": "a0b1c2",
+    "registration": "N123XX",
+    "label": "Cohort 01",
+    "notes": "Replace with your own tracked aircraft."
+  },
+  {
+    "hex": "b1c2d3",
+    "registration": "N456YY",
+    "label": "Cohort 02",
+    "notes": "Historical backfill requires a stable ICAO hex."
+  }
+]
+

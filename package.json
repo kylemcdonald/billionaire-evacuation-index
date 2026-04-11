@@ -1,0 +1,32 @@
+{
+  "name": "ews",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local anomaly dashboard for tracked-aircraft activity",
+  "type": "commonjs",
+  "workspaces": [
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,magenta \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "npm run dev --workspace client",
+    "build": "npm run build --workspace client",
+    "preview": "npm run preview --workspace client",
+    "start": "node server/index.js",
+    "import:faa": "python3 scripts/import_faa_cohort.py",
+    "seed:demo": "python3 scripts/seed_demo_data.py",
+    "backfill": "python3 scripts/backfill_history.py",
+    "update:daily": "python3 scripts/backfill_history.py --relative-days 1",
+    "export:snapshot": "node scripts/export_dashboard_snapshot.js",
+    "lint": "npm run lint --workspace client"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

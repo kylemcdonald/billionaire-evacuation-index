@@ -1,0 +1,8 @@
+node_modules/
+client/node_modules/
+client/dist/
+data/
+tmp/
+config/watchlist.json
+config/opensky.credentials.json
+.DS_Store

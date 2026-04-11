@@ -1,0 +1,76 @@
+name: Refresh Live Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-live-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          pip install -r requirements.txt
+
+      - name: Restore deployment state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data
+          if gh release view ews-state >/dev/null 2>&1; then
+            gh release download ews-state --pattern ews.sqlite --dir data --clobber
+          else
+            echo "::error::Missing bootstrap release 'ews-state' with asset data/ews.sqlite"
+            exit 1
+          fi
+
+      - name: Refresh latest heatmap
+        run: python3 scripts/update_latest_heatmap.py
+
+      - name: Export published dashboard snapshot
+        run: node scripts/export_dashboard_snapshot.js --output tmp/dashboard.json
+
+      - name: Upload deployment state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload ews-state data/ews.sqlite --clobber
+
+      - name: Publish live snapshot branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          publish_dir="$(mktemp -d)"
+          cp tmp/dashboard.json "$publish_dir/dashboard.json"
+          cd "$publish_dir"
+          git init -b live-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dashboard.json
+          git commit -m "Publish live snapshot"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin live-data
