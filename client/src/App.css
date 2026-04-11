@@ -560,8 +560,42 @@
 }
 
 .chart-overview {
+  position: relative;
   margin: 10px 0 0;
-  padding: 0 18px 4px;
+  padding: 0 0 4px;
+}
+
+.brush-range-labels {
+  position: absolute;
+  inset: 8px 28px 10px 6px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.brush-range-label {
+  position: absolute;
+  top: 50%;
+  max-width: 96px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(16, 29, 40, 0.92);
+  border: 1px solid rgba(255, 184, 77, 0.26);
+  color: rgba(255, 236, 210, 0.86);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+
+.brush-range-label-start {
+  text-align: left;
+}
+
+.brush-range-label-end {
+  text-align: right;
+  transform: translate(-100%, -50%);
 }
 
 .flight-list {
@@ -629,13 +663,17 @@
 }
 
 .history-panel {
-  overflow: visible;
+  overflow: hidden;
 }
 
 .history-panel .chart-frame,
 .history-panel .chart-overview,
 .rolling-panel .chart-frame {
   overflow: visible;
+}
+
+.history-panel .recharts-brush-texts {
+  display: none;
 }
 
 .history-panel .recharts-tooltip-wrapper,

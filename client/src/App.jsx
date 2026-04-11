@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useId, useState } from 'react'
+import { startTransition, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -34,6 +34,7 @@ const worldGraticule = geoPath(worldProjection)(geoGraticule10())
 const DIAL_START = -140
 const DIAL_END = 140
 const DIAL_SIGMA_RANGE = 2
+const NARROW_HISTORY_BREAKPOINT = 820
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const alertCopy = {
@@ -203,6 +204,30 @@ function buildTrailingRange(length, windowSize) {
     startIndex: Math.max(0, length - clampedWindow),
     endIndex: length - 1,
   }
+}
+
+function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
+  const [isNarrowLayout, setIsNarrowLayout] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    return window.innerWidth <= breakpoint
+  })
+
+  useEffect(() => {
+    function updateLayoutMode() {
+      setIsNarrowLayout(window.innerWidth <= breakpoint)
+    }
+
+    updateLayoutMode()
+    window.addEventListener('resize', updateLayoutMode)
+    return () => {
+      window.removeEventListener('resize', updateLayoutMode)
+    }
+  }, [breakpoint])
+
+  return isNarrowLayout
 }
 
 function clampSigmaShift(value) {
@@ -468,7 +493,15 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
 }
 
 function DailyChart({ data }) {
+  const isNarrowLayout = useIsNarrowLayout()
+
+  return <DailyChartPanel key={`${isNarrowLayout ? 'narrow' : 'wide'}-${data.length}`} data={data} isNarrowLayout={isNarrowLayout} />
+}
+
+function DailyChartPanel({ data, isNarrowLayout }) {
   const [zoomRange, setZoomRange] = useState(null)
+  const [activeBrushEdge, setActiveBrushEdge] = useState(null)
+  const overviewRef = useRef(null)
 
   if (!data.length) {
     return (
@@ -484,21 +517,55 @@ function DailyChart({ data }) {
     )
   }
 
-  const visibleRange = clampZoomRange(zoomRange ?? buildTrailingRange(data.length, 365), data.length)
+  const visibleRange = clampZoomRange(zoomRange ?? buildTrailingRange(data.length, isNarrowLayout ? 30 : 365), data.length)
   const visibleData = data.slice(visibleRange.startIndex, visibleRange.endIndex + 1)
   const visibleStart = visibleData[0]?.day
   const visibleEnd = visibleData[visibleData.length - 1]?.day
+  const chartTitle =
+    visibleData.length <= 45 ? 'One Month Of Escape Traffic' : visibleData.length >= 300 ? 'One Year Of Escape Traffic' : 'Escape Traffic Archive'
+  const brushStartRatio = data.length > 1 ? visibleRange.startIndex / (data.length - 1) : 0
+  const brushEndRatio = data.length > 1 ? visibleRange.endIndex / (data.length - 1) : 1
+  const brushStartLabel = formatCompactDate(data[visibleRange.startIndex]?.day)
+  const brushEndLabel = formatCompactDate(data[visibleRange.endIndex]?.day)
 
   function applyPreset(days) {
     setZoomRange(buildTrailingRange(data.length, days))
   }
 
+  function updateActiveBrushEdge(event) {
+    const overviewNode = overviewRef.current
+    if (!overviewNode || !data.length) {
+      return
+    }
+
+    const rect = overviewNode.getBoundingClientRect()
+    const contentLeft = 6
+    const contentRight = 28
+    const contentWidth = Math.max(rect.width - contentLeft - contentRight, 1)
+    const pointerX = event.clientX - rect.left
+    const startX = contentLeft + brushStartRatio * contentWidth
+    const endX = contentLeft + brushEndRatio * contentWidth
+    const snapDistance = 18
+
+    if (Math.abs(pointerX - startX) <= snapDistance) {
+      setActiveBrushEdge('start')
+      return
+    }
+
+    if (Math.abs(pointerX - endX) <= snapDistance) {
+      setActiveBrushEdge('end')
+      return
+    }
+
+    setActiveBrushEdge(null)
+  }
+
   return (
-        <section className="panel chart-panel history-panel">
+    <section className="panel chart-panel history-panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Precedent Archive</p>
-          <h2>One Year Of Escape Traffic</h2>
+          <h2>{chartTitle}</h2>
         </div>
       </div>
       <div className="chart-toolbar">
@@ -638,9 +705,26 @@ function DailyChart({ data }) {
           </ResponsiveContainer>
         </div>
       </div>
-      <div className="chart-overview">
+      <div
+        ref={overviewRef}
+        className="chart-overview"
+        onMouseMove={updateActiveBrushEdge}
+        onMouseLeave={() => setActiveBrushEdge(null)}
+      >
+        <div className="brush-range-labels" aria-hidden="true">
+          {activeBrushEdge === 'start' ? (
+            <span className="brush-range-label brush-range-label-start" style={{ left: `calc(${brushStartRatio * 100}% + 12px)` }}>
+              {brushStartLabel}
+            </span>
+          ) : null}
+          {activeBrushEdge === 'end' ? (
+            <span className="brush-range-label brush-range-label-end" style={{ left: `calc(${brushEndRatio * 100}% - 12px)` }}>
+              {brushEndLabel}
+            </span>
+          ) : null}
+        </div>
         <ResponsiveContainer width="100%" height={88}>
-          <AreaChart data={data} margin={{ top: 0, right: 56, left: 56, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 0, right: 28, left: 6, bottom: 0 }}>
             <defs>
               <linearGradient id="dailyOverviewFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ffb84d" stopOpacity="0.45" />
