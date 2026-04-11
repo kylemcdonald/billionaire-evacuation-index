@@ -94,8 +94,7 @@ npm run export:snapshot
 The public deployment can run with:
 
 - Cloudflare Pages for the static frontend
+- Cloudflare R2 for the public `dashboard.json` snapshot and canonical `data/ews.sqlite`
 - GitHub Actions for the scheduled refresh jobs
-- GitHub release assets for the canonical `data/ews.sqlite`
-- A force-pushed `live-data` branch containing the latest published `dashboard.json`
 
 The repository includes scheduled workflows in `.github/workflows/refresh-live-data.yml` and `.github/workflows/refresh-daily-history.yml` for that setup.

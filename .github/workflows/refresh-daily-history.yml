@@ -6,10 +6,14 @@ on:
     - cron: "29 0 * * *"
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  PUBLIC_BUCKET: billionaire-evacuation-index-public
+  STATE_BUCKET: billionaire-evacuation-index-state
 
 concurrency:
   group: refresh-daily-history
@@ -41,16 +45,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Restore deployment state
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p data
-          if gh release view ews-state >/dev/null 2>&1; then
-            gh release download ews-state --pattern ews.sqlite --dir data --clobber
-          else
-            echo "::error::Missing bootstrap release 'ews-state' with asset data/ews.sqlite"
-            exit 1
-          fi
+          npx wrangler r2 object get "${STATE_BUCKET}/ews.sqlite" --file data/ews.sqlite --remote
 
       - name: Roll daily history forward
         run: python3 scripts/backfill_history.py --relative-days 1
@@ -62,21 +59,12 @@ jobs:
         run: node scripts/export_dashboard_snapshot.js --output tmp/dashboard.json
 
       - name: Upload deployment state
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload ews-state data/ews.sqlite --clobber
+        run: npx wrangler r2 object put "${STATE_BUCKET}/ews.sqlite" --file data/ews.sqlite --remote
 
-      - name: Publish live snapshot branch
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Publish live snapshot
         run: |
-          publish_dir="$(mktemp -d)"
-          cp tmp/dashboard.json "$publish_dir/dashboard.json"
-          cd "$publish_dir"
-          git init -b live-data
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dashboard.json
-          git commit -m "Publish daily snapshot"
-          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push --force origin live-data
+          npx wrangler r2 object put "${PUBLIC_BUCKET}/dashboard.json" \
+            --file tmp/dashboard.json \
+            --remote \
+            --content-type application/json \
+            --cache-control "public, max-age=300"
