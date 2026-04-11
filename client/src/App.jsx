@@ -19,6 +19,7 @@ import './App.css'
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || '/api/dashboard'
 const DASHBOARD_CACHE_BUSTER_MINUTES = 5
+const DASHBOARD_POLL_INTERVAL_MS = 5 * 60_000
 const worldGeographies = feature(worldAtlas, worldAtlas.objects.countries).features
 const worldProjection = geoEqualEarth().fitExtent(
   [
@@ -771,7 +772,7 @@ function App() {
     }
 
     loadDashboard()
-    const intervalId = window.setInterval(loadDashboard, 60_000)
+    const intervalId = window.setInterval(loadDashboard, DASHBOARD_POLL_INTERVAL_MS)
 
     return () => {
       active = false
