@@ -640,7 +640,7 @@ function DailyChart({ data }) {
       </div>
       <div className="chart-overview">
         <ResponsiveContainer width="100%" height={88}>
-          <AreaChart data={data} margin={{ top: 0, right: 28, left: 6, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 0, right: 56, left: 56, bottom: 0 }}>
             <defs>
               <linearGradient id="dailyOverviewFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ffb84d" stopOpacity="0.45" />
@@ -917,6 +917,18 @@ function App() {
       ) : null}
 
       <section className="top-grid">
+        <section className="panel hero-copy-panel">
+          <p className="eyebrow">Continuity Monitor</p>
+          <h1>Billionaire Evacuation Index</h1>
+          <p className="hero-copy">
+            An early-warning instrument built on one impolite theory: if catastrophe is coming, the people with
+            private terminals, long-range jets, and somewhere else to be may hear it first.
+          </p>
+          <p className="hero-caption">
+            Three excuses are baked in before the dial moves: same season last year, same weekday over the last month,
+            and the last week's usual time-of-day rhythm. What remains is the scramble.
+          </p>
+        </section>
         <div className="dial-stack">
           <SignalDial
             eyebrow="Evacuation Thermometer"
@@ -958,18 +970,6 @@ function App() {
             ]}
           />
         </div>
-        <section className="panel hero-copy-panel">
-          <p className="eyebrow">Continuity Monitor</p>
-          <h1>Billionaire Evacuation Index</h1>
-          <p className="hero-copy">
-            An early-warning instrument built on one impolite theory: if catastrophe is coming, the people with
-            private terminals, long-range jets, and somewhere else to be may hear it first.
-          </p>
-          <p className="hero-caption">
-            Three excuses are baked in before the dial moves: same season last year, same weekday over the last month,
-            and the last week's usual time-of-day rhythm. What remains is the scramble.
-          </p>
-        </section>
       </section>
 
       <section className="secondary-grid">
