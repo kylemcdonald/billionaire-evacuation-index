@@ -6,3 +6,5 @@ tmp/
 config/watchlist.json
 config/opensky.credentials.json
 .DS_Store
+__pycache__/
+*.pyc
