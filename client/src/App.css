@@ -3,7 +3,7 @@
   gap: 24px;
 }
 
-.hero-panel,
+.top-grid,
 .primary-grid,
 .secondary-grid,
 .tertiary-grid {
@@ -11,8 +11,8 @@
   gap: 24px;
 }
 
-.hero-panel {
-  grid-template-columns: 1.25fr 0.75fr;
+.top-grid {
+  grid-template-columns: 0.92fr 1.08fr;
   align-items: stretch;
 }
 
@@ -104,15 +104,21 @@
 
 .hero-copy-panel {
   display: grid;
-  gap: 18px;
-  align-content: space-between;
+  gap: 16px;
+  align-content: end;
   min-height: 100%;
+  min-height: 460px;
+  background:
+    linear-gradient(180deg, rgba(16, 10, 9, 0.1), rgba(16, 10, 9, 0.72) 48%, rgba(10, 6, 6, 0.96)),
+    linear-gradient(25deg, rgba(255, 126, 58, 0.22), transparent 42%),
+    url('./assets/apocalypse-ocean.jpg') center center / cover;
 }
 
 .hero-copy-panel::after {
   background:
-    radial-gradient(circle at 88% 22%, rgba(255, 88, 48, 0.12), transparent 30%),
-    linear-gradient(120deg, transparent 0%, rgba(255, 217, 176, 0.03) 42%, transparent 64%),
+    radial-gradient(circle at 72% 18%, rgba(255, 139, 86, 0.32), transparent 22%),
+    radial-gradient(circle at 74% 20%, rgba(255, 235, 205, 0.14), transparent 12%),
+    linear-gradient(120deg, transparent 0%, rgba(255, 217, 176, 0.04) 42%, transparent 64%),
     repeating-linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.018) 0,
@@ -123,7 +129,7 @@
 }
 
 .hero-caption {
-  max-width: 42rem;
+  max-width: 38rem;
   color: rgba(255, 204, 151, 0.84);
   font-size: 15px;
   letter-spacing: 0.04em;
@@ -458,6 +464,10 @@
   margin-top: 18px;
 }
 
+.rolling-panel .chart-frame {
+  margin-bottom: 10px;
+}
+
 .chart-toolbar {
   display: flex;
   justify-content: space-between;
@@ -505,6 +515,15 @@
   margin-top: 12px;
 }
 
+.chart-summary-section {
+  margin-top: 20px;
+}
+
+.chart-summary-stack {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
 .chart-preset-group {
   display: inline-flex;
   flex-wrap: wrap;
@@ -541,7 +560,8 @@
 }
 
 .chart-overview {
-  margin-top: 10px;
+  margin: 10px 0 0;
+  padding: 0 8px 4px;
 }
 
 .flight-list {
@@ -608,6 +628,21 @@
   margin-top: 20px;
 }
 
+.history-panel {
+  overflow: visible;
+}
+
+.history-panel .chart-frame,
+.history-panel .chart-overview,
+.rolling-panel .chart-frame {
+  overflow: visible;
+}
+
+.history-panel .recharts-tooltip-wrapper,
+.rolling-panel .recharts-tooltip-wrapper {
+  z-index: 8;
+}
+
 .loading-panel,
 .error-panel {
   min-height: 50svh;
@@ -629,11 +664,12 @@
 }
 
 @media (max-width: 1080px) {
-  .hero-panel,
+  .top-grid,
   .primary-grid,
   .secondary-grid,
   .tertiary-grid,
-  .metric-grid {
+  .metric-grid,
+  .chart-summary-stack {
     grid-template-columns: 1fr;
   }
 
@@ -657,5 +693,9 @@
 
   .flight-list li div:last-child {
     text-align: left;
+  }
+
+  .hero-copy-panel {
+    min-height: 360px;
   }
 }

@@ -383,9 +383,9 @@ function SignalDial({ eyebrow, title, signal, lede, stats }) {
   )
 }
 
-function RollingChart({ data }) {
+function RollingChart({ data, summaryCopy, summaryMetrics }) {
   return (
-    <section className="panel chart-panel">
+    <section className="panel chart-panel rolling-panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Scramble Rhythm</p>
@@ -420,6 +420,8 @@ function RollingChart({ data }) {
                 borderRadius: '14px',
                 color: '#f6efde',
               }}
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 6 }}
               labelFormatter={(value) => formatTimestamp(value)}
               formatter={(value, name) => [formatCount(value), name]}
             />
@@ -443,6 +445,23 @@ function RollingChart({ data }) {
             />
           </LineChart>
         </ResponsiveContainer>
+      </div>
+      <div className="chart-subsection chart-summary-section">
+        <div className="chart-subsection-header">
+          <strong>How The Model Calibrates</strong>
+          <span>{summaryCopy}</span>
+        </div>
+        <div className="summary-stack chart-summary-stack">
+          {summaryMetrics.map((metric) => (
+            <MetricBlock
+              key={metric.label}
+              label={metric.label}
+              value={metric.value}
+              note={metric.note}
+              emphasis={metric.emphasis || 'warm'}
+            />
+          ))}
+        </div>
       </div>
     </section>
   )
@@ -475,7 +494,7 @@ function DailyChart({ data }) {
   }
 
   return (
-    <section className="panel chart-panel history-panel">
+        <section className="panel chart-panel history-panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Precedent Archive</p>
@@ -504,7 +523,7 @@ function DailyChart({ data }) {
       </div>
       <div className="chart-frame">
         <ResponsiveContainer width="100%" height={320}>
-          <AreaChart data={visibleData} margin={{ top: 14, right: 18, left: -16, bottom: 0 }}>
+          <AreaChart data={visibleData} margin={{ top: 14, right: 28, left: 6, bottom: 0 }}>
             <defs>
               <linearGradient id="dailyFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ff6d40" stopOpacity="0.82" />
@@ -534,6 +553,8 @@ function DailyChart({ data }) {
                 borderRadius: '14px',
                 color: '#f6efde',
               }}
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 6 }}
               labelFormatter={(value) => formatLongDate(value)}
               formatter={(value, name) => [
                 formatCount(value),
@@ -568,7 +589,7 @@ function DailyChart({ data }) {
         </div>
         <div className="chart-frame chart-frame-secondary">
           <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={visibleData} margin={{ top: 8, right: 18, left: -16, bottom: 0 }}>
+            <AreaChart data={visibleData} margin={{ top: 8, right: 28, left: 6, bottom: 0 }}>
               <defs>
                 <linearGradient id="divergenceFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#d6ff6a" stopOpacity="0.45" />
@@ -598,6 +619,8 @@ function DailyChart({ data }) {
                   borderRadius: '14px',
                   color: '#f6efde',
                 }}
+                allowEscapeViewBox={{ x: true, y: true }}
+                wrapperStyle={{ zIndex: 6 }}
                 labelFormatter={(value) => formatLongDate(value)}
                 formatter={(value) => [formatDelta(value), 'Divergence']}
               />
@@ -617,7 +640,7 @@ function DailyChart({ data }) {
       </div>
       <div className="chart-overview">
         <ResponsiveContainer width="100%" height={88}>
-          <AreaChart data={data} margin={{ top: 0, right: 18, left: -16, bottom: 0 }}>
+          <AreaChart data={data} margin={{ top: 0, right: 28, left: 6, bottom: 0 }}>
             <defs>
               <linearGradient id="dailyOverviewFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ffb84d" stopOpacity="0.45" />
@@ -645,7 +668,7 @@ function DailyChart({ data }) {
                 }
                 setZoomRange(clampZoomRange(nextRange, data.length))
               }}
-              travellerWidth={12}
+              travellerWidth={14}
               stroke="#ffb84d"
               fill="rgba(16, 29, 40, 0.95)"
               tickFormatter={formatCompactDate}
@@ -691,9 +714,6 @@ function GlobalMap({ aircraft }) {
           })}
         </svg>
       </div>
-      <p className="panel-footnote">
-        No trails. No destination fantasies. Just the latest coordinates for whoever already got wheels up.
-      </p>
     </section>
   )
 }
@@ -835,40 +855,43 @@ function App() {
   const sameTimeDelta =
     Number(compositeSignal.actualConcurrentCount || 0) - Number(timeOfDaySignal?.concurrentMean || 0)
   const compositeEmphasis = getShiftEmphasis(compositeSignal.sigmaShift ?? 0)
+  const rollingSummaryCopy =
+    "The dial does not move just because mornings are busy or Wednesdays run hot. It blends the same date last year, recent matching weekdays, and the last week's intraday rhythm to estimate how many aircraft should be airborne before anyone starts acting unusually prepared."
+  const rollingSummaryMetrics = [
+    {
+      label: 'Panic spread',
+      value: formatDelta(concurrentDelta),
+      note: 'Difference between the actual airborne count and the modelled calm',
+      emphasis: compositeEmphasis,
+    },
+    {
+      label: 'Weekday excuse',
+      value: formatDelta(weekdayDelta),
+      note: `Difference versus the ${weekdayWindowLabel.toLowerCase()} rolling mean`,
+      emphasis: getShiftEmphasis(weekdaySignal.sigmaShift),
+    },
+    {
+      label: 'Holiday excuse',
+      value: yearAgoDelta != null ? formatDelta(yearAgoDelta) : 'n/a',
+      note:
+        yearAgoSignal?.percentChange != null
+          ? `${formatSignedPercent(yearAgoSignal.percentChange)} versus the nearest sample one year ago`
+          : 'Year-ago sample unavailable',
+      emphasis: getShiftEmphasis(yearAgoSignal?.sigmaShift ?? 0),
+    },
+    {
+      label: 'Clock excuse',
+      value: formatDelta(sameTimeDelta),
+      note:
+        timeOfDaySignal?.sampleCount
+          ? `${formatCount(timeOfDaySignal.sampleCount)} prior same-time samples in the last week`
+          : 'No recent same-time samples available',
+      emphasis: getShiftEmphasis(timeOfDaySignal?.sigmaShift ?? 0),
+    },
+  ]
 
   return (
     <main className="app-shell">
-      <section className="hero-panel">
-        <section className="panel hero-copy-panel">
-          <p className="eyebrow">Continuity Monitor</p>
-          <h1>Billionaire Evacuation Index</h1>
-          <p className="hero-copy">
-            An early-warning instrument built on one impolite theory: if catastrophe is coming, the people with
-            private terminals, long-range jets, and somewhere else to be may hear it first.
-          </p>
-          <p className="hero-caption">
-            No destination guesses. No secret intelligence. Just a running count of whether the escape fleet is
-            suddenly in a hurry.
-          </p>
-        </section>
-        <div className="hero-aside panel">
-          <span className={`signal-pill signal-${dashboard.current?.alertLevel || 'normal'}`}>
-            {alert.label}
-          </span>
-          <p>{alert.detail}</p>
-          <div className="hero-stats">
-            <div>
-              <span>Tracked escape craft</span>
-              <strong>{formatCount(dashboard.cohort?.trackedCount ?? dashboard.watchlist?.trackedCount)}</strong>
-            </div>
-            <div>
-              <span>Latest sweep</span>
-              <strong>{formatTimestamp(dashboard.current?.asOf)}</strong>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {dashboard.warning ? (
         <section className="status-banner">
           <strong>{dashboard.mode === 'demo' ? 'Demo mode.' : 'Configuration required.'}</strong>
@@ -893,13 +916,13 @@ function App() {
         </section>
       ) : null}
 
-      <section className="primary-grid">
+      <section className="top-grid">
         <div className="dial-stack">
           <SignalDial
             eyebrow="Evacuation Thermometer"
             title="Private Jet Scramble Index"
             signal={compositeSignal}
-            lede="Three excuses are baked in before the dial moves: same season last year, same weekday over the last month, and the last week's usual time-of-day rhythm. What remains is the scramble."
+            lede={alert.detail}
             stats={[
               {
                 label: 'Jets up now',
@@ -910,6 +933,16 @@ function App() {
                 label: 'Model says',
                 value: formatCount(compositeSignal.expectedConcurrentCount),
                 note: 'Expected airborne count after the alibis and seasonal excuses are applied',
+              },
+              {
+                label: 'Tracked escape craft',
+                value: formatCount(dashboard.cohort?.trackedCount ?? dashboard.watchlist?.trackedCount),
+                note: 'FAA-derived business-jet cohort currently monitored by the system',
+              },
+              {
+                label: 'Latest sweep',
+                value: formatTimestamp(dashboard.current?.asOf),
+                note: 'Most recent published half-hour heatmap sample',
               },
               {
                 label: 'Panic offset',
@@ -925,64 +958,28 @@ function App() {
             ]}
           />
         </div>
-        <GlobalMap aircraft={liveAircraft} />
+        <section className="panel hero-copy-panel">
+          <p className="eyebrow">Continuity Monitor</p>
+          <h1>Billionaire Evacuation Index</h1>
+          <p className="hero-copy">
+            An early-warning instrument built on one impolite theory: if catastrophe is coming, the people with
+            private terminals, long-range jets, and somewhere else to be may hear it first.
+          </p>
+          <p className="hero-caption">
+            Three excuses are baked in before the dial moves: same season last year, same weekday over the last month,
+            and the last week's usual time-of-day rhythm. What remains is the scramble.
+          </p>
+        </section>
       </section>
 
       <section className="secondary-grid">
-        <RollingChart data={rollingData} />
+        <GlobalMap aircraft={liveAircraft} />
         <ModelSummaryList aircraft={liveAircraft} />
       </section>
 
-      <section className="tertiary-grid">
-        <DailyChart data={modeledDailyData} />
-        <section className="panel summary-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Panic Accounting</p>
-              <h2>How The Model Calibrates</h2>
-            </div>
-          </div>
-          <p className="summary-copy">
-            The dial does not move just because mornings are busy or Wednesdays run hot. It blends the same date last
-            year, recent matching weekdays, and the last week's intraday rhythm to estimate how many aircraft should be
-            airborne before anyone starts acting unusually prepared.
-          </p>
-          <div className="summary-stack">
-            <MetricBlock
-              label="Panic spread"
-              value={formatDelta(concurrentDelta)}
-              note="Difference between the actual airborne count and the modelled calm"
-              emphasis={compositeEmphasis}
-            />
-            <MetricBlock
-              label="Weekday excuse"
-              value={formatDelta(weekdayDelta)}
-              note={`Difference versus the ${weekdayWindowLabel.toLowerCase()} rolling mean`}
-              emphasis={getShiftEmphasis(weekdaySignal.sigmaShift)}
-            />
-            <MetricBlock
-              label="Holiday excuse"
-              value={yearAgoDelta != null ? formatDelta(yearAgoDelta) : 'n/a'}
-              note={
-                yearAgoSignal?.percentChange != null
-                  ? `${formatSignedPercent(yearAgoSignal.percentChange)} versus the nearest sample one year ago`
-                  : 'Year-ago sample unavailable'
-              }
-              emphasis={getShiftEmphasis(yearAgoSignal?.sigmaShift ?? 0)}
-            />
-            <MetricBlock
-              label="Clock excuse"
-              value={formatDelta(sameTimeDelta)}
-              note={
-                timeOfDaySignal?.sampleCount
-                  ? `${formatCount(timeOfDaySignal.sampleCount)} prior same-time samples in the last week`
-                  : 'No recent same-time samples available'
-              }
-              emphasis={getShiftEmphasis(timeOfDaySignal?.sigmaShift ?? 0)}
-            />
-          </div>
-        </section>
-      </section>
+      <RollingChart data={rollingData} summaryCopy={rollingSummaryCopy} summaryMetrics={rollingSummaryMetrics} />
+
+      <DailyChart data={modeledDailyData} />
     </main>
   )
 }
