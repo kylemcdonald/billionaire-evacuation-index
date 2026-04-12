@@ -33,7 +33,9 @@ const worldGraticule = geoPath(worldProjection)(geoGraticule10())
 
 const DIAL_START = -140
 const DIAL_END = 140
-const DIAL_SIGMA_RANGE = 2
+const DIAL_SIGMA_RANGE = 3.5
+const DIAL_WARM_START_SIGMA = 0.25
+const DIAL_HOT_START_SIGMA = 2.5
 const NARROW_HISTORY_BREAKPOINT = 820
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -265,6 +267,10 @@ function sigmaToNeedleAngle(value) {
   return (clampSigmaShift(value) / DIAL_SIGMA_RANGE) * DIAL_END
 }
 
+function sigmaToDialAngle(value) {
+  return (value / DIAL_SIGMA_RANGE) * DIAL_END
+}
+
 function getShiftEmphasis(sigmaShift) {
   if (sigmaShift <= -0.25) {
     return 'cool'
@@ -372,9 +378,18 @@ function SignalDial({ eyebrow, title, signal, lede, stats }) {
           </defs>
 
           <path d={describeArc(180, 180, 112, DIAL_START, DIAL_END)} className="dial-track" />
-          <path d={describeArc(180, 180, 112, DIAL_START, 5)} className="dial-segment dial-segment-cool" />
-          <path d={describeArc(180, 180, 112, 5, 70)} className="dial-segment dial-segment-warm" />
-          <path d={describeArc(180, 180, 112, 70, DIAL_END)} className="dial-segment dial-segment-hot" />
+          <path
+            d={describeArc(180, 180, 112, DIAL_START, sigmaToDialAngle(DIAL_WARM_START_SIGMA))}
+            className="dial-segment dial-segment-cool"
+          />
+          <path
+            d={describeArc(180, 180, 112, sigmaToDialAngle(DIAL_WARM_START_SIGMA), sigmaToDialAngle(DIAL_HOT_START_SIGMA))}
+            className="dial-segment dial-segment-warm"
+          />
+          <path
+            d={describeArc(180, 180, 112, sigmaToDialAngle(DIAL_HOT_START_SIGMA), DIAL_END)}
+            className="dial-segment dial-segment-hot"
+          />
           <path d={describeArc(180, 180, 96, DIAL_START, DIAL_END)} className="dial-inner-track" />
 
           {Array.from({ length: 9 }).map((_, index) => {

@@ -23,6 +23,9 @@ const META_SLOT_KEY = "adsbx_heatmap_slot_key";
 const META_SAMPLED_AT = "adsbx_heatmap_sampled_at";
 const META_URL = "adsbx_heatmap_url";
 const META_CACHE_PATH = "adsbx_heatmap_cache_path";
+const ELEVATED_SIGMA_THRESHOLD = 1.5;
+const ALARM_SIGMA_THRESHOLD = 2.5;
+const DIAL_SIGMA_EXTENT = 3.5;
 const INTRADAY_SMOOTHING_WINDOW = [
   { offsetMinutes: -60, weight: 1 },
   { offsetMinutes: -30, weight: 2 },
@@ -32,11 +35,11 @@ const INTRADAY_SMOOTHING_WINDOW = [
 ];
 
 function computeAlertLevel(sigmaShift) {
-  if (sigmaShift >= 2) {
+  if (sigmaShift >= ALARM_SIGMA_THRESHOLD) {
     return "alarm";
   }
 
-  if (sigmaShift >= 1) {
+  if (sigmaShift >= ELEVATED_SIGMA_THRESHOLD) {
     return "elevated";
   }
 
@@ -44,8 +47,8 @@ function computeAlertLevel(sigmaShift) {
 }
 
 function computeGaugeValue(sigmaShift) {
-  const clampedShift = Math.max(-2, Math.min(2, sigmaShift));
-  return Math.max(0, Math.min(1, 0.5 + clampedShift / 4));
+  const clampedShift = Math.max(-DIAL_SIGMA_EXTENT, Math.min(DIAL_SIGMA_EXTENT, sigmaShift));
+  return Math.max(0, Math.min(1, 0.5 + clampedShift / (DIAL_SIGMA_EXTENT * 2)));
 }
 
 function computeBaselineSignal(currentValue, baselineMean, baselineStdDev) {
