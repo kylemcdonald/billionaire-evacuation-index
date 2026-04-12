@@ -1,38 +1,9 @@
 const {
   initDb,
   getDb,
-  getRecentWeekdayBaselineStats,
-  getRecentTimeOfDayBaseline,
-  getRollingMetricNear,
+  getBaselineStats,
 } = require("../server/db");
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function average(values) {
-  const finiteValues = values.filter((value) => Number.isFinite(value));
-  if (finiteValues.length === 0) {
-    return null;
-  }
-
-  return finiteValues.reduce((total, value) => total + value, 0) / finiteValues.length;
-}
-
-function predictConcurrent(referenceIso) {
-  const recentWeekdayBaseline = getRecentWeekdayBaselineStats(referenceIso, 4);
-  const recentTimeOfDayBaseline = getRecentTimeOfDayBaseline(referenceIso, 7);
-  const yearAgoTargetAt = new Date(new Date(referenceIso).getTime() - 365 * DAY_MS).toISOString();
-  const yearAgoReference = getRollingMetricNear(yearAgoTargetAt);
-  const yearAgoRollingCount = yearAgoReference?.rolling24hCount ?? null;
-  const blendedRollingBaseline =
-    average([recentWeekdayBaseline.mean || null, yearAgoRollingCount]) ??
-    recentTimeOfDayBaseline.rollingMean ??
-    null;
-  const ratioMean = recentTimeOfDayBaseline.ratioMean || 0;
-
-  return blendedRollingBaseline && ratioMean
-    ? blendedRollingBaseline * ratioMean
-    : recentTimeOfDayBaseline.concurrentMean || null;
-}
+const { computeConcurrentPredictionModel } = require("../server/dashboard");
 
 function computeMedian(sortedValues) {
   if (!sortedValues.length) {
@@ -47,9 +18,10 @@ function computeMedian(sortedValues) {
 
 initDb();
 const db = getDb();
+const globalBaseline = getBaselineStats();
 const rows = db
   .prepare(`
-    SELECT sampled_at AS sampledAt, concurrent_count AS concurrentCount
+    SELECT sampled_at AS sampledAt, rolling_24h_count AS rolling24hCount, concurrent_count AS concurrentCount
     FROM rolling_metrics
     WHERE sampled_at >= datetime((SELECT max(sampled_at) FROM rolling_metrics), ?)
     ORDER BY sampled_at ASC
@@ -58,7 +30,11 @@ const rows = db
 
 const evaluations = rows
   .map((row) => {
-    const predicted = Number(predictConcurrent(row.sampledAt));
+    const currentRolling24hCount = Number(row.rolling24hCount || 0);
+    const predicted = Number(
+      computeConcurrentPredictionModel(row.sampledAt, currentRolling24hCount, Number(row.concurrentCount || 0), globalBaseline)
+        .expectedConcurrentCount,
+    );
     if (!Number.isFinite(predicted)) {
       return null;
     }

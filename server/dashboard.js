@@ -16,12 +16,20 @@ const {
 const { getDemoDashboard } = require("./demo-data");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HALF_HOUR_MS = 30 * 60 * 1000;
 const HEATMAP_SOURCE = "adsbx_heatmap";
 const HEATMAP_STATUS_META_KEY = "adsbx_heatmap_status";
 const META_SLOT_KEY = "adsbx_heatmap_slot_key";
 const META_SAMPLED_AT = "adsbx_heatmap_sampled_at";
 const META_URL = "adsbx_heatmap_url";
 const META_CACHE_PATH = "adsbx_heatmap_cache_path";
+const INTRADAY_SMOOTHING_WINDOW = [
+  { offsetMinutes: -60, weight: 1 },
+  { offsetMinutes: -30, weight: 2 },
+  { offsetMinutes: 0, weight: 3 },
+  { offsetMinutes: 30, weight: 2 },
+  { offsetMinutes: 60, weight: 1 },
+];
 
 function computeAlertLevel(sigmaShift) {
   if (sigmaShift >= 2) {
@@ -90,6 +98,89 @@ function average(values) {
   return finiteValues.reduce((total, value) => total + value, 0) / finiteValues.length;
 }
 
+function shiftIsoByMinutes(referenceIso, minutes) {
+  return new Date(new Date(referenceIso).getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function roundIsoToNearestHalfHour(referenceIso) {
+  const timestamp = Date.parse(referenceIso);
+  if (!Number.isFinite(timestamp)) {
+    return referenceIso;
+  }
+
+  return new Date(Math.round(timestamp / HALF_HOUR_MS) * HALF_HOUR_MS).toISOString();
+}
+
+function combineWeightedStats(parts, valueKey, deviationKey) {
+  const activeParts = parts.filter((part) => part.weight > 0 && part.baseline?.sampleCount);
+  if (!activeParts.length) {
+    return {
+      mean: 0,
+      standardDeviation: 0,
+      totalWeight: 0,
+    };
+  }
+
+  const totalWeight = activeParts.reduce((total, part) => total + part.weight, 0);
+  const mean =
+    activeParts.reduce((total, part) => total + part.weight * Number(part.baseline?.[valueKey] ?? 0), 0) / totalWeight;
+  const meanSquare =
+    activeParts.reduce((total, part) => {
+      const baselineMean = Number(part.baseline?.[valueKey] ?? 0);
+      const baselineDeviation = Number(part.baseline?.[deviationKey] ?? 0);
+      return total + part.weight * (baselineDeviation * baselineDeviation + baselineMean * baselineMean);
+    }, 0) / totalWeight;
+
+  return {
+    mean,
+    standardDeviation: Math.sqrt(Math.max(0, meanSquare - mean * mean)),
+    totalWeight,
+  };
+}
+
+function getSmoothedTimeOfDayBaseline(referenceIso, days = 7) {
+  const canonicalReferenceIso = roundIsoToNearestHalfHour(referenceIso);
+  const windowParts = INTRADAY_SMOOTHING_WINDOW.map(({ offsetMinutes, weight }) => ({
+    offsetMinutes,
+    weight,
+    baseline: getRecentTimeOfDayBaseline(shiftIsoByMinutes(canonicalReferenceIso, offsetMinutes), days),
+  }));
+  const centerPart = windowParts.find((part) => part.offsetMinutes === 0)?.baseline ?? {
+    sampleCount: 0,
+    samples: [],
+  };
+  const concurrentStats = combineWeightedStats(
+    windowParts,
+    "concurrentMean",
+    "concurrentStandardDeviation",
+  );
+  const rollingStats = combineWeightedStats(windowParts, "rollingMean", "rollingStandardDeviation");
+  const ratioStats = combineWeightedStats(windowParts, "ratioMean", "ratioStandardDeviation");
+
+  return {
+    referenceIso: canonicalReferenceIso,
+    sampleCount: centerPart.sampleCount ?? 0,
+    samples: centerPart.samples ?? [],
+    smoothedWindowMinutes: Math.max(...INTRADAY_SMOOTHING_WINDOW.map((part) => Math.abs(part.offsetMinutes))),
+    concurrentMean: concurrentStats.mean,
+    concurrentStandardDeviation: concurrentStats.standardDeviation,
+    rollingMean: rollingStats.mean,
+    rollingStandardDeviation: rollingStats.standardDeviation,
+    ratioMean: ratioStats.mean,
+    ratioStandardDeviation: ratioStats.standardDeviation,
+    componentBaselines: windowParts.map((part) => ({
+      offsetMinutes: part.offsetMinutes,
+      sampleCount: part.baseline?.sampleCount ?? 0,
+      concurrentMean: part.baseline?.concurrentMean ?? 0,
+      concurrentStandardDeviation: part.baseline?.concurrentStandardDeviation ?? 0,
+      rollingMean: part.baseline?.rollingMean ?? 0,
+      rollingStandardDeviation: part.baseline?.rollingStandardDeviation ?? 0,
+      ratioMean: part.baseline?.ratioMean ?? 0,
+      ratioStandardDeviation: part.baseline?.ratioStandardDeviation ?? 0,
+    })),
+  };
+}
+
 function parseSavedHeatmapStatus() {
   const savedValue = getMetaValue(HEATMAP_STATUS_META_KEY);
   if (!savedValue) {
@@ -129,9 +220,10 @@ function buildStoredHeatmapStatus(overrides = {}) {
 }
 
 function computeConcurrentPredictionModel(referenceIso, currentRolling24hCount, concurrentCount, globalBaseline) {
-  const recentWeekdayBaseline = getRecentWeekdayBaselineStats(referenceIso, 4);
-  const recentTimeOfDayBaseline = getRecentTimeOfDayBaseline(referenceIso, 7);
-  const yearAgoTargetAt = new Date(new Date(referenceIso).getTime() - 365 * DAY_MS).toISOString();
+  const canonicalReferenceIso = roundIsoToNearestHalfHour(referenceIso);
+  const recentWeekdayBaseline = getRecentWeekdayBaselineStats(canonicalReferenceIso, 4);
+  const recentTimeOfDayBaseline = getSmoothedTimeOfDayBaseline(canonicalReferenceIso, 7);
+  const yearAgoTargetAt = new Date(new Date(canonicalReferenceIso).getTime() - 365 * DAY_MS).toISOString();
   const yearAgoReference = getRollingMetricNear(yearAgoTargetAt);
   const yearAgoRollingCount = yearAgoReference?.rolling24hCount ?? null;
   const blendedRollingBaseline =
@@ -177,6 +269,7 @@ function computeConcurrentPredictionModel(referenceIso, currentRolling24hCount, 
   );
 
   return {
+    canonicalReferenceIso,
     yearAgoTargetAt,
     yearAgoReference,
     yearAgoRollingCount,
@@ -323,5 +416,6 @@ module.exports = {
   buildDashboardPayload,
   buildDashboardSnapshot,
   buildStoredHeatmapStatus,
+  computeConcurrentPredictionModel,
   HEATMAP_SOURCE,
 };

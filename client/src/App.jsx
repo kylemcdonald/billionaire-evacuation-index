@@ -88,8 +88,23 @@ function formatSigned(value) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}σ`
 }
 
+function roundDateToNearestHalfHour(value) {
+  const date = new Date(value)
+  const timestamp = date.getTime()
+  if (!Number.isFinite(timestamp)) {
+    return null
+  }
+
+  return new Date(Math.round(timestamp / (30 * 60 * 1000)) * 30 * 60 * 1000)
+}
+
 function formatTimestamp(value) {
   if (!value) {
+    return 'No timestamp'
+  }
+
+  const roundedDate = roundDateToNearestHalfHour(value)
+  if (!roundedDate) {
     return 'No timestamp'
   }
 
@@ -99,7 +114,19 @@ function formatTimestamp(value) {
     hour: 'numeric',
     minute: '2-digit',
     timeZoneName: 'short',
-  }).format(new Date(value))
+  }).format(roundedDate)
+}
+
+function formatRoundedTime(value) {
+  const roundedDate = roundDateToNearestHalfHour(value)
+  if (!roundedDate) {
+    return 'n/a'
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(roundedDate)
 }
 
 function formatCompactDate(value) {
@@ -423,9 +450,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
             <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="4 8" vertical={false} />
             <XAxis
               dataKey="sampledAt"
-              tickFormatter={(value) =>
-                new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(value))
-              }
+              tickFormatter={formatRoundedTime}
               tick={{ fill: 'rgba(240, 223, 197, 0.56)', fontSize: 12 }}
               axisLine={false}
               tickLine={false}
@@ -451,7 +476,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
               formatter={(value, name) => [formatCount(value), name]}
             />
             <Line
-              type="monotone"
+              type="linear"
               dataKey="concurrentCount"
               stroke="#ff7a4a"
               strokeWidth={3}
@@ -459,7 +484,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
               name="Jets up now"
             />
             <Line
-              type="monotone"
+              type="linear"
               dataKey="predictedConcurrentCount"
               stroke="#d6ff6a"
               strokeWidth={2}
