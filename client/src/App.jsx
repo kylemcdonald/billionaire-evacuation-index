@@ -165,15 +165,6 @@ function formatSpeed(value) {
   return `${Math.round(value)} kt`
 }
 
-function formatHeading(value) {
-  if (!Number.isFinite(value)) {
-    return 'n/a'
-  }
-
-  const normalized = ((Math.round(value) % 360) + 360) % 360
-  return `${normalized}°`
-}
-
 function formatCoordinate(value, positiveHemisphere, negativeHemisphere) {
   if (!Number.isFinite(value)) {
     return 'n/a'
@@ -513,7 +504,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
                 borderRadius: '14px',
                 color: '#f6efde',
               }}
-              allowEscapeViewBox={{ x: true, y: true }}
+              allowEscapeViewBox={{ x: false, y: true }}
               wrapperStyle={{ zIndex: 6 }}
               labelFormatter={(value) => formatTimestamp(value)}
               formatter={(value, name) => [formatCount(value), name]}
@@ -866,10 +857,6 @@ function GlobalMap({ aircraft }) {
                 <div>
                   <dt>Speed</dt>
                   <dd>{formatSpeed(activePlane.groundSpeedKt)}</dd>
-                </div>
-                <div>
-                  <dt>Heading</dt>
-                  <dd>{formatHeading(activePlane.track)}</dd>
                 </div>
                 <div className="map-hover-coordinates">
                   <dt>Coordinates</dt>
