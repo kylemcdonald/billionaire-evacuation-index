@@ -15,6 +15,7 @@ import {
 import { geoEqualEarth, geoGraticule10, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
+import apocalypseOcean from './assets/apocalypse-ocean.jpg'
 import './App.css'
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || '/api/dashboard'
@@ -40,6 +41,14 @@ const DIAL_WARM_START_RATIO = 0.5
 const DIAL_WARM_START_SIGMA = DIAL_SIGMA_RANGE * DIAL_WARM_START_RATIO
 const NARROW_HISTORY_BREAKPOINT = 820
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const CHART_TICK_COLOR = '#333333'
+const CHART_GRID_COLOR = '#d4d4d4'
+const CHART_TOOLTIP_STYLE = {
+  background: '#ffffff',
+  border: '1px solid #999999',
+  borderRadius: '0',
+  color: '#000000',
+}
 
 const alertCopy = {
   normal: {
@@ -481,29 +490,24 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
       <div className="chart-frame">
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={data} margin={{ top: 12, right: 18, left: -14, bottom: 0 }}>
-            <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="4 8" vertical={false} />
+            <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
             <XAxis
               dataKey="sampledAt"
               tickFormatter={formatRoundedTime}
-              tick={{ fill: 'rgba(240, 223, 197, 0.56)', fontSize: 12 }}
+              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
               minTickGap={24}
             />
             <YAxis
-              tick={{ fill: 'rgba(240, 223, 197, 0.56)', fontSize: 12 }}
+              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
               width={34}
               allowDecimals={false}
             />
             <Tooltip
-              contentStyle={{
-                background: 'rgba(9, 18, 26, 0.96)',
-                border: '1px solid rgba(117, 209, 240, 0.18)',
-                borderRadius: '14px',
-                color: '#f6efde',
-              }}
+              contentStyle={CHART_TOOLTIP_STYLE}
               allowEscapeViewBox={{ x: false, y: true }}
               wrapperStyle={{ zIndex: 6 }}
               labelFormatter={(value) => formatTimestamp(value)}
@@ -656,29 +660,24 @@ function DailyChartPanel({ data, isNarrowLayout }) {
                 <stop offset="100%" stopColor="#ff6d40" stopOpacity="0" />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="4 8" vertical={false} />
+            <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
             <XAxis
               dataKey="day"
               tickFormatter={formatCompactDate}
-              tick={{ fill: 'rgba(240, 223, 197, 0.56)', fontSize: 12 }}
+              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
               minTickGap={24}
             />
             <YAxis
-              tick={{ fill: 'rgba(240, 223, 197, 0.56)', fontSize: 12 }}
+              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
               width={34}
               allowDecimals={false}
             />
             <Tooltip
-              contentStyle={{
-                background: 'rgba(9, 18, 26, 0.96)',
-                border: '1px solid rgba(255, 190, 92, 0.18)',
-                borderRadius: '14px',
-                color: '#f6efde',
-              }}
+              contentStyle={CHART_TOOLTIP_STYLE}
               allowEscapeViewBox={{ x: true, y: true }}
               wrapperStyle={{ zIndex: 6 }}
               labelFormatter={(value) => formatLongDate(value)}
@@ -722,29 +721,24 @@ function DailyChartPanel({ data, isNarrowLayout }) {
                   <stop offset="100%" stopColor="#d6ff6a" stopOpacity="0.02" />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="rgba(255,255,255,0.06)" strokeDasharray="4 8" vertical={false} />
+              <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
               <XAxis
                 dataKey="day"
                 tickFormatter={formatCompactDate}
-                tick={{ fill: 'rgba(240, 223, 197, 0.56)', fontSize: 12 }}
+                tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
                 minTickGap={24}
               />
               <YAxis
-                tick={{ fill: 'rgba(240, 223, 197, 0.56)', fontSize: 12 }}
+                tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
                 tickFormatter={formatDelta}
                 axisLine={false}
                 tickLine={false}
                 width={42}
               />
               <Tooltip
-                contentStyle={{
-                  background: 'rgba(9, 18, 26, 0.96)',
-                  border: '1px solid rgba(117, 209, 240, 0.18)',
-                  borderRadius: '14px',
-                  color: '#f6efde',
-                }}
+                contentStyle={CHART_TOOLTIP_STYLE}
                 allowEscapeViewBox={{ x: true, y: true }}
                 wrapperStyle={{ zIndex: 6 }}
                 labelFormatter={(value) => formatLongDate(value)}
@@ -1112,6 +1106,11 @@ function App() {
         <section className="panel hero-copy-panel">
           <p className="eyebrow">Continuity Monitor</p>
           <h1>Billionaire Evacuation Index</h1>
+          <img
+            className="hero-professor-image"
+            src={apocalypseOcean}
+            alt="Tropical shoreline with a distant mushroom cloud"
+          />
           <p className="hero-copy">
             An early-warning instrument built on one impolite theory: if catastrophe is coming, the people with
             private terminals, long-range jets, and somewhere else to be may hear it first.
