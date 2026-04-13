@@ -411,9 +411,84 @@
 }
 
 .map-frame {
+  position: relative;
   height: 100%;
   min-height: 420px;
   padding: 12px 0 6px;
+}
+
+.map-hover-card {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  width: min(280px, calc(100% - 36px));
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 184, 77, 0.14);
+  background:
+    linear-gradient(180deg, rgba(18, 11, 10, 0.96), rgba(12, 7, 7, 0.94)),
+    rgba(16, 29, 40, 0.92);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+}
+
+.map-hover-card-active {
+  border-color: rgba(255, 184, 77, 0.28);
+}
+
+.map-hover-header {
+  display: grid;
+  gap: 4px;
+}
+
+.map-hover-header strong {
+  color: var(--panel-text);
+  font-size: 16px;
+}
+
+.map-hover-header span,
+.map-hover-empty span,
+.map-hover-grid dt {
+  color: var(--panel-muted);
+  font-size: 12px;
+}
+
+.map-hover-empty {
+  display: grid;
+  gap: 6px;
+}
+
+.map-hover-empty strong,
+.map-hover-grid dd {
+  color: var(--panel-text);
+}
+
+.map-hover-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  margin: 14px 0 0;
+}
+
+.map-hover-grid div {
+  display: grid;
+  gap: 4px;
+}
+
+.map-hover-grid dt {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.map-hover-grid dd {
+  margin: 0;
+  font-size: 14px;
+}
+
+.map-hover-coordinates {
+  grid-column: 1 / -1;
 }
 
 .map-sphere {
@@ -444,6 +519,34 @@
   fill: #ff8a57;
   stroke: rgba(255, 247, 234, 0.9);
   stroke-width: 1.5;
+}
+
+.map-marker {
+  cursor: pointer;
+  transition: transform 140ms ease;
+}
+
+.map-marker-core,
+.map-marker-halo {
+  transition:
+    transform 140ms ease,
+    fill 140ms ease,
+    stroke 140ms ease,
+    opacity 140ms ease;
+}
+
+.map-marker:hover .map-marker-core,
+.map-marker:focus-visible .map-marker-core,
+.map-marker-active .map-marker-core {
+  fill: #ffd8a4;
+  stroke: rgba(255, 255, 255, 0.98);
+}
+
+.map-marker:hover .map-marker-halo,
+.map-marker:focus-visible .map-marker-halo,
+.map-marker-active .map-marker-halo {
+  fill: rgba(255, 214, 138, 0.22);
+  stroke: rgba(255, 214, 138, 0.42);
 }
 
 .map-badge {

@@ -165,6 +165,32 @@ function formatSpeed(value) {
   return `${Math.round(value)} kt`
 }
 
+function formatHeading(value) {
+  if (!Number.isFinite(value)) {
+    return 'n/a'
+  }
+
+  const normalized = ((Math.round(value) % 360) + 360) % 360
+  return `${normalized}°`
+}
+
+function formatCoordinate(value, positiveHemisphere, negativeHemisphere) {
+  if (!Number.isFinite(value)) {
+    return 'n/a'
+  }
+
+  const hemisphere = value >= 0 ? positiveHemisphere : negativeHemisphere
+  return `${Math.abs(value).toFixed(2)}° ${hemisphere}`
+}
+
+function formatCoordinates(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return 'n/a'
+  }
+
+  return `${formatCoordinate(lat, 'N', 'S')}, ${formatCoordinate(lon, 'E', 'W')}`
+}
+
 function formatPercent(value) {
   if (!Number.isFinite(value)) {
     return '0%'
@@ -807,6 +833,9 @@ function DailyChartPanel({ data, isNarrowLayout }) {
 }
 
 function GlobalMap({ aircraft }) {
+  const [activePlaneHex, setActivePlaneHex] = useState(null)
+  const activePlane = aircraft.find((plane) => plane.hex === activePlaneHex) ?? null
+
   return (
     <section className="panel map-panel">
       <div className="panel-header">
@@ -818,6 +847,43 @@ function GlobalMap({ aircraft }) {
       </div>
 
       <div className="map-frame">
+        <div className={`map-hover-card${activePlane ? ' map-hover-card-active' : ''}`}>
+          {activePlane ? (
+            <>
+              <div className="map-hover-header">
+                <strong>{activePlane.label || activePlane.registration || activePlane.hex?.toUpperCase()}</strong>
+                <span>{activePlane.registration || activePlane.hex?.toUpperCase() || 'Unknown aircraft'}</span>
+              </div>
+              <dl className="map-hover-grid">
+                <div>
+                  <dt>Last seen</dt>
+                  <dd>{formatTimestamp(activePlane.observed_at)}</dd>
+                </div>
+                <div>
+                  <dt>Altitude</dt>
+                  <dd>{formatAltitude(activePlane.altitudeFt)}</dd>
+                </div>
+                <div>
+                  <dt>Speed</dt>
+                  <dd>{formatSpeed(activePlane.groundSpeedKt)}</dd>
+                </div>
+                <div>
+                  <dt>Heading</dt>
+                  <dd>{formatHeading(activePlane.track)}</dd>
+                </div>
+                <div className="map-hover-coordinates">
+                  <dt>Coordinates</dt>
+                  <dd>{formatCoordinates(activePlane.lat, activePlane.lon)}</dd>
+                </div>
+              </dl>
+            </>
+          ) : (
+            <div className="map-hover-empty">
+              <strong>Hover a craft</strong>
+              <span>Mouse over any marker to inspect the latest half-hour snapshot for that aircraft.</span>
+            </div>
+          )}
+        </div>
         <svg viewBox="0 0 800 410" className="map-svg" role="img" aria-label="Current aircraft positions">
           <rect x="8" y="8" width="784" height="394" rx="198" className="map-sphere" />
           <path d={worldGraticule} className="map-graticule" />
@@ -831,7 +897,19 @@ function GlobalMap({ aircraft }) {
             }
 
             return (
-              <g key={plane.hex} className="map-marker" transform={`translate(${point[0]} ${point[1]})`}>
+              <g
+                key={plane.hex}
+                className={`map-marker${plane.hex === activePlaneHex ? ' map-marker-active' : ''}`}
+                transform={`translate(${point[0]} ${point[1]})`}
+                onMouseEnter={() => setActivePlaneHex(plane.hex)}
+                onMouseLeave={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : currentHex))}
+                onFocus={() => setActivePlaneHex(plane.hex)}
+                onBlur={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : currentHex))}
+                onClick={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : plane.hex))}
+                tabIndex={0}
+                role="button"
+                aria-label={`${plane.label || plane.registration || plane.hex?.toUpperCase()} at ${formatAltitude(plane.altitudeFt)}, ${formatSpeed(plane.groundSpeedKt)}`}
+              >
                 <circle r="6.5" className="map-marker-core" />
                 <circle r="12" className="map-marker-halo" />
                 <title>{`${plane.label} · ${formatAltitude(plane.altitudeFt)} · ${formatSpeed(plane.groundSpeedKt)}`}</title>
