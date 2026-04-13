@@ -882,6 +882,7 @@ function ModelSummaryList({ aircraft }) {
 function App() {
   const [dashboard, setDashboard] = useState(null)
   const [error, setError] = useState(null)
+  const [showDetails, setShowDetails] = useState(false)
 
   const applyDashboard = useEffectEvent((nextDashboard) => {
     startTransition(() => {
@@ -1042,7 +1043,7 @@ function App() {
         </section>
       ) : null}
 
-      <section className="top-grid">
+      <section className="focus-grid">
         <section className="panel hero-copy-panel">
           <p className="eyebrow">Continuity Monitor</p>
           <h1>Billionaire Evacuation Index</h1>
@@ -1098,14 +1099,39 @@ function App() {
         </div>
       </section>
 
-      <section className="secondary-grid">
+      <section className="focus-map-grid">
         <GlobalMap aircraft={liveAircraft} />
-        <ModelSummaryList aircraft={liveAircraft} />
       </section>
 
-      <RollingChart data={rollingData} summaryCopy={rollingSummaryCopy} summaryMetrics={rollingSummaryMetrics} />
+      <section className="panel reveal-panel">
+        <div className="panel-header reveal-panel-header">
+          <div>
+            <p className="eyebrow">Archive Access</p>
+            <h2>{showDetails ? 'Collapse The Background Detail' : 'Click For More Information'}</h2>
+          </div>
+        </div>
+        <p className="panel-lede">
+          {showDetails
+            ? 'Historical precedent, model calibration, and fleet composition are expanded below.'
+            : 'Open the deeper readout to inspect the recent panic trace, the yearly archive, and the visible aircraft mix.'}
+        </p>
+        <button
+          type="button"
+          className="reveal-button"
+          onClick={() => setShowDetails((currentValue) => !currentValue)}
+          aria-expanded={showDetails}
+        >
+          {showDetails ? 'Hide Full Readout' : 'Show Full Readout'}
+        </button>
+      </section>
 
-      <DailyChart data={modeledDailyData} />
+      {showDetails ? (
+        <section className="details-stack">
+          <RollingChart data={rollingData} summaryCopy={rollingSummaryCopy} summaryMetrics={rollingSummaryMetrics} />
+          <DailyChart data={modeledDailyData} />
+          <ModelSummaryList aircraft={liveAircraft} />
+        </section>
+      ) : null}
     </main>
   )
 }
