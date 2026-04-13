@@ -470,7 +470,7 @@ function DailyChartPanel({ data, isNarrowLayout }) {
     )
   }
 
-  const visibleRange = clampZoomRange(zoomRange ?? buildTrailingRange(data.length, isNarrowLayout ? 30 : 365), data.length)
+  const visibleRange = clampZoomRange(zoomRange ?? buildTrailingRange(data.length, isNarrowLayout ? 30 : 90), data.length)
   const visibleData = data.slice(visibleRange.startIndex, visibleRange.endIndex + 1)
   const visibleStart = visibleData[0]?.day
   const visibleEnd = visibleData[visibleData.length - 1]?.day
