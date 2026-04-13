@@ -33,9 +33,11 @@ const worldGraticule = geoPath(worldProjection)(geoGraticule10())
 
 const DIAL_START = -140
 const DIAL_END = 140
-const DIAL_SIGMA_RANGE = 16.0
-const DIAL_WARM_START_SIGMA = 0
 const DIAL_HOT_START_SIGMA = 8.0
+const DIAL_HOT_START_RATIO = 0.75
+const DIAL_SIGMA_RANGE = DIAL_HOT_START_SIGMA / DIAL_HOT_START_RATIO
+const DIAL_WARM_START_RATIO = 0.5
+const DIAL_WARM_START_SIGMA = DIAL_SIGMA_RANGE * DIAL_WARM_START_RATIO
 const NARROW_HISTORY_BREAKPOINT = 820
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -260,15 +262,15 @@ function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
 }
 
 function clampSigmaShift(value) {
-  return Math.max(-DIAL_SIGMA_RANGE, Math.min(DIAL_SIGMA_RANGE, Number(value || 0)))
+  return Math.max(0, Math.min(DIAL_SIGMA_RANGE, Number(value || 0)))
 }
 
 function sigmaToNeedleAngle(value) {
-  return (clampSigmaShift(value) / DIAL_SIGMA_RANGE) * DIAL_END
+  return DIAL_START + (clampSigmaShift(value) / DIAL_SIGMA_RANGE) * (DIAL_END - DIAL_START)
 }
 
 function sigmaToDialAngle(value) {
-  return (value / DIAL_SIGMA_RANGE) * DIAL_END
+  return DIAL_START + (Math.max(0, Math.min(DIAL_SIGMA_RANGE, value)) / DIAL_SIGMA_RANGE) * (DIAL_END - DIAL_START)
 }
 
 function getShiftEmphasis(sigmaShift) {

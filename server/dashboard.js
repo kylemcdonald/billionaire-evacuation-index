@@ -25,7 +25,8 @@ const META_URL = "adsbx_heatmap_url";
 const META_CACHE_PATH = "adsbx_heatmap_cache_path";
 const ELEVATED_SIGMA_THRESHOLD = 1.5;
 const ALARM_SIGMA_THRESHOLD = 8.0;
-const DIAL_SIGMA_EXTENT = 16.0;
+const DIAL_HOT_START_RATIO = 0.75;
+const DIAL_SIGMA_EXTENT = ALARM_SIGMA_THRESHOLD / DIAL_HOT_START_RATIO;
 const INTRADAY_SMOOTHING_WINDOW = [
   { offsetMinutes: -60, weight: 1 },
   { offsetMinutes: -30, weight: 2 },
@@ -47,15 +48,15 @@ function computeAlertLevel(sigmaShift) {
 }
 
 function computeGaugeValue(sigmaShift) {
-  const clampedShift = Math.max(-DIAL_SIGMA_EXTENT, Math.min(DIAL_SIGMA_EXTENT, sigmaShift));
-  return Math.max(0, Math.min(1, 0.5 + clampedShift / (DIAL_SIGMA_EXTENT * 2)));
+  const clampedShift = Math.max(0, Math.min(DIAL_SIGMA_EXTENT, sigmaShift));
+  return Math.max(0, Math.min(1, clampedShift / DIAL_SIGMA_EXTENT));
 }
 
 function computeBaselineSignal(currentValue, baselineMean, baselineStdDev) {
   if (!baselineStdDev) {
     return {
       sigmaShift: 0,
-      gaugeValue: 0.5,
+      gaugeValue: 0,
       alertLevel: "normal",
     };
   }
@@ -74,7 +75,7 @@ function computeReferenceSignal(currentValue, referenceValue, normalizationStdDe
       deltaCount: null,
       percentChange: null,
       sigmaShift: 0,
-      gaugeValue: 0.5,
+      gaugeValue: 0,
       alertLevel: "normal",
     };
   }
