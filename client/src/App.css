@@ -301,6 +301,7 @@
 
 .map-marker {
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .map-marker:hover .map-marker-core,
@@ -314,6 +315,10 @@
 .map-marker-active .map-marker-halo {
   fill: rgba(204, 0, 0, 0.1);
   stroke: rgba(204, 0, 0, 0.3);
+}
+
+.map-marker-touch .map-marker-core {
+  stroke-width: 2;
 }
 
 .provider-toggle-group {
@@ -545,6 +550,7 @@
   .map-frame {
     display: grid;
     gap: 12px;
+    min-height: auto;
   }
 
   .map-hover-card {
@@ -555,6 +561,10 @@
 
   .map-svg {
     order: 1;
+  }
+
+  .map-svg-narrow {
+    min-height: 300px;
   }
 
   .flight-list li,

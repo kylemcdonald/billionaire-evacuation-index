@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { geoEqualEarth, geoGraticule10, geoPath } from 'd3-geo'
+import { geoEqualEarth, geoGraticule10, geoMercator, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
 import apocalypseOcean from './assets/apocalypse-ocean.jpg'
@@ -21,16 +21,9 @@ import './App.css'
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || '/api/dashboard'
 const DASHBOARD_CACHE_BUSTER_MINUTES = 5
 const DASHBOARD_POLL_INTERVAL_MS = 5 * 60_000
+const MAP_WIDTH = 800
+const MAP_HEIGHT = 410
 const worldGeographies = feature(worldAtlas, worldAtlas.objects.countries).features
-const worldProjection = geoEqualEarth().fitExtent(
-  [
-    [20, 16],
-    [780, 394],
-  ],
-  { type: 'FeatureCollection', features: worldGeographies },
-)
-const worldPath = geoPath(worldProjection)
-const worldGraticule = geoPath(worldProjection)(geoGraticule10())
 
 const NARROW_HISTORY_BREAKPOINT = 820
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -44,6 +37,7 @@ const CHART_TOOLTIP_STYLE = {
   borderRadius: '0',
   color: '#000000',
 }
+const WORLD_FEATURE_COLLECTION = { type: 'FeatureCollection', features: worldGeographies }
 
 const alertCopy = {
   normal: {
@@ -326,6 +320,23 @@ function buildDashboardRequestUrl() {
   const bucketMs = DASHBOARD_CACHE_BUSTER_MINUTES * 60 * 1000
   url.searchParams.set('v', String(Math.floor(Date.now() / bucketMs)))
   return url.toString()
+}
+
+function createWorldProjection() {
+  return geoEqualEarth().fitExtent(
+    [
+      [20, 16],
+      [780, 394],
+    ],
+    WORLD_FEATURE_COLLECTION,
+  )
+}
+
+function createUnitedStatesProjection() {
+  return geoMercator()
+    .center([-98.5, 38.5])
+    .scale(700)
+    .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2 + 12])
 }
 
 function MetricBlock({ label, value, note }) {
@@ -708,8 +719,14 @@ function DailyChartPanel({ data, isNarrowLayout }) {
 }
 
 function GlobalMap({ aircraft }) {
+  const isNarrowLayout = useIsNarrowLayout()
   const [activePlaneHex, setActivePlaneHex] = useState(null)
   const activePlane = aircraft.find((plane) => plane.hex === activePlaneHex) ?? null
+  const projection = isNarrowLayout ? createUnitedStatesProjection() : createWorldProjection()
+  const path = geoPath(projection)
+  const graticulePath = path(geoGraticule10())
+  const markerCoreRadius = isNarrowLayout ? 8.5 : 6.5
+  const markerHaloRadius = isNarrowLayout ? 15 : 12
 
   return (
     <section className="panel map-panel">
@@ -750,19 +767,28 @@ function GlobalMap({ aircraft }) {
             </>
           ) : (
             <div className="map-hover-empty">
-              <strong>Hover a craft</strong>
-              <span>Mouse over any marker to inspect the latest half-hour snapshot for that aircraft.</span>
+              <strong>{isNarrowLayout ? 'Tap a craft' : 'Hover a craft'}</strong>
+              <span>
+                {isNarrowLayout
+                  ? 'Tap any marker to inspect the latest half-hour snapshot for that aircraft.'
+                  : 'Mouse over any marker to inspect the latest half-hour snapshot for that aircraft.'}
+              </span>
             </div>
           )}
         </div>
-        <svg viewBox="0 0 800 410" className="map-svg" role="img" aria-label="Current aircraft positions">
-          <rect x="8" y="8" width="784" height="394" rx="198" className="map-sphere" />
-          <path d={worldGraticule} className="map-graticule" />
+        <svg
+          viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+          className={`map-svg${isNarrowLayout ? ' map-svg-narrow' : ''}`}
+          role="img"
+          aria-label="Current aircraft positions"
+        >
+          <rect x="8" y="8" width="784" height="394" rx={isNarrowLayout ? 16 : 198} className="map-sphere" />
+          <path d={graticulePath} className="map-graticule" />
           {worldGeographies.map((geo) => (
-            <path key={geo.id || geo.properties?.name} d={worldPath(geo)} className="map-geography" />
+            <path key={geo.id || geo.properties?.name} d={path(geo)} className="map-geography" />
           ))}
           {aircraft.map((plane) => {
-            const point = worldProjection([plane.lon, plane.lat])
+            const point = projection([plane.lon, plane.lat])
             if (!point) {
               return null
             }
@@ -770,10 +796,10 @@ function GlobalMap({ aircraft }) {
             return (
               <g
                 key={plane.hex}
-                className={`map-marker${plane.hex === activePlaneHex ? ' map-marker-active' : ''}`}
+                className={`map-marker${plane.hex === activePlaneHex ? ' map-marker-active' : ''}${isNarrowLayout ? ' map-marker-touch' : ''}`}
                 transform={`translate(${point[0]} ${point[1]})`}
-                onMouseEnter={() => setActivePlaneHex(plane.hex)}
-                onMouseLeave={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : currentHex))}
+                onMouseEnter={isNarrowLayout ? undefined : () => setActivePlaneHex(plane.hex)}
+                onMouseLeave={isNarrowLayout ? undefined : () => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : currentHex))}
                 onFocus={() => setActivePlaneHex(plane.hex)}
                 onBlur={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : currentHex))}
                 onClick={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : plane.hex))}
@@ -781,8 +807,8 @@ function GlobalMap({ aircraft }) {
                 role="button"
                 aria-label={`${plane.label || plane.registration || plane.hex?.toUpperCase()} at ${formatAltitude(plane.altitudeFt)}, ${formatSpeed(plane.groundSpeedKt)}`}
               >
-                <circle r="6.5" className="map-marker-core" />
-                <circle r="12" className="map-marker-halo" />
+                <circle r={markerCoreRadius} className="map-marker-core" />
+                <circle r={markerHaloRadius} className="map-marker-halo" />
                 <title>{`${plane.label} · ${formatAltitude(plane.altitudeFt)} · ${formatSpeed(plane.groundSpeedKt)}`}</title>
               </g>
             )
