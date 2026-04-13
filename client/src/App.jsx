@@ -33,9 +33,9 @@ const worldGraticule = geoPath(worldProjection)(geoGraticule10())
 
 const DIAL_START = -140
 const DIAL_END = 140
-const DIAL_SIGMA_RANGE = 3.5
+const DIAL_SIGMA_RANGE = 9.0
 const DIAL_WARM_START_SIGMA = 0.25
-const DIAL_HOT_START_SIGMA = 2.5
+const DIAL_HOT_START_SIGMA = 8.0
 const NARROW_HISTORY_BREAKPOINT = 820
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 

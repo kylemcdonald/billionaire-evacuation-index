@@ -24,8 +24,8 @@ const META_SAMPLED_AT = "adsbx_heatmap_sampled_at";
 const META_URL = "adsbx_heatmap_url";
 const META_CACHE_PATH = "adsbx_heatmap_cache_path";
 const ELEVATED_SIGMA_THRESHOLD = 1.5;
-const ALARM_SIGMA_THRESHOLD = 2.5;
-const DIAL_SIGMA_EXTENT = 3.5;
+const ALARM_SIGMA_THRESHOLD = 8.0;
+const DIAL_SIGMA_EXTENT = 9.0;
 const INTRADAY_SMOOTHING_WINDOW = [
   { offsetMinutes: -60, weight: 1 },
   { offsetMinutes: -30, weight: 2 },
