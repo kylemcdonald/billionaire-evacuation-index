@@ -50,19 +50,11 @@
   align-items: flex-start;
 }
 
-.eyebrow {
-  margin: 0 0 6px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #000000;
-}
-
 .hero-copy,
 .panel-lede,
 .panel-footnote,
 .summary-copy,
 .hero-caption,
-.metric-note,
 .chart-range-copy span,
 .chart-subsection-header span,
 .flight-list span,
@@ -80,7 +72,6 @@
 .map-panel,
 .list-panel,
 .summary-panel,
-.reveal-panel,
 .loading-panel,
 .error-panel,
 .provider-panel {
@@ -105,28 +96,14 @@
   background: #ffffff;
 }
 
-.signal-pill,
 .map-badge {
-  display: inline-block;
-  min-width: 0;
-  padding: 2px 8px;
-  border: 1px solid #999999;
-  border-radius: 0;
-  background: #f5f5f5;
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #000000;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.signal-normal {
-  background: #f5f5f5;
-}
-
-.signal-elevated,
-.signal-alarm {
-  background: #f5f5f5;
 }
 
 .status-banner {
@@ -146,7 +123,6 @@
   gap: 16px;
 }
 
-.reveal-button,
 .chart-preset {
   appearance: none;
   justify-self: start;
@@ -158,13 +134,11 @@
   cursor: pointer;
 }
 
-.reveal-button:hover,
 .chart-preset:hover,
 .provider-toggle:hover:not(:disabled) {
   background: #e5e5e5;
 }
 
-.reveal-button:focus-visible,
 .chart-preset:focus-visible,
 .provider-toggle:focus-visible {
   outline: 1px dotted #000000;
@@ -185,36 +159,19 @@
   margin-bottom: 0;
 }
 
-.metric-grid,
-.summary-stack {
-  display: grid;
-  gap: 10px;
+.summary-table {
+  width: 100%;
+  margin-top: 12px;
 }
 
-.metric-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 14px;
+.summary-table td {
+  padding: 6px 8px;
+  vertical-align: top;
 }
 
-.metric-block {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid #cccccc;
-  border-radius: 0;
-  background: #ffffff;
-}
-
-.metric-label {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #000000;
-}
-
-.metric-value {
-  color: #000000;
-  font-size: 1.25rem;
-  line-height: 1.15;
+.summary-table td:first-child {
+  width: 110px;
+  white-space: nowrap;
 }
 
 .map-frame {
@@ -464,10 +421,6 @@
   background: #f8f8f8;
 }
 
-.summary-stack {
-  margin-top: 12px;
-}
-
 .history-panel {
   overflow: hidden;
 }
@@ -514,9 +467,7 @@
   .secondary-grid,
   .tertiary-grid,
   .focus-map-grid,
-  .details-stack,
-  .metric-grid,
-  .chart-summary-stack {
+  .details-stack {
     grid-template-columns: 1fr;
   }
 
@@ -532,7 +483,6 @@
   .map-panel,
   .list-panel,
   .summary-panel,
-  .reveal-panel,
   .loading-panel,
   .error-panel,
   .provider-panel {
@@ -568,8 +518,6 @@
   }
 
   .flight-list li,
-  .metric-grid,
-  .chart-summary-stack,
   .map-hover-grid {
     grid-template-columns: 1fr;
   }

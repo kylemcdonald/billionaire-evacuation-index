@@ -339,17 +339,7 @@ function createUnitedStatesProjection() {
     .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2 + 12])
 }
 
-function MetricBlock({ label, value, note }) {
-  return (
-    <div className="metric-block">
-      <span className="metric-label">{label}</span>
-      <strong className="metric-value">{value}</strong>
-      <span className="metric-note">{note}</span>
-    </div>
-  )
-}
-
-function EmergencySummary({ eyebrow, title, signal, latestSweep, actualCount, expectedCount, trackedCount }) {
+function EmergencySummary({ title, signal, latestSweep, actualCount, expectedCount, trackedCount }) {
   const sigmaShift = signal?.sigmaShift ?? signal?.zScore ?? 0
   const label = alertCopy[signal?.alertLevel || 'normal']
   const emergencyLevel = getEmergencyLevel(sigmaShift)
@@ -357,23 +347,20 @@ function EmergencySummary({ eyebrow, title, signal, latestSweep, actualCount, ex
   return (
     <section className="panel dial-panel">
       <div className="panel-header">
-        <div>
-          <p className="eyebrow">{eyebrow}</p>
-          <h2>{title}</h2>
-        </div>
+        <div><h2>{title}</h2></div>
       </div>
       <p className="emergency-line">
         <strong>Emergency level: {emergencyLevel}/5.</strong> {label.detail}
       </p>
       <p className="panel-lede">
-        Level 5 corresponds to the red zone. The current signal is {formatSigned(sigmaShift)} relative to the model
-        baseline.
+        Level 5 corresponds to the current red threshold. The current deviation is {formatSigned(sigmaShift)} relative
+        to the model estimate.
       </p>
       <div className="summary-text-block">
         <p><strong>Latest sweep:</strong> {latestSweep}</p>
         <p><strong>Aircraft currently airborne:</strong> {formatCount(actualCount)}</p>
-        <p><strong>Model expectation:</strong> {formatCount(expectedCount)}</p>
-        <p><strong>Tracked escape craft:</strong> {formatCount(trackedCount)}</p>
+        <p><strong>Expected airborne aircraft:</strong> {formatCount(expectedCount)}</p>
+        <p><strong>Tracked aircraft:</strong> {formatCount(trackedCount)}</p>
       </div>
     </section>
   )
@@ -383,10 +370,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
   return (
     <section className="panel chart-panel rolling-panel">
       <div className="panel-header">
-        <div>
-          <p className="eyebrow">Scramble Rhythm</p>
-          <h2>Recent Airborne Panic</h2>
-        </div>
+        <div><h2>Recent Concurrent Aircraft</h2></div>
       </div>
       <div className="chart-frame">
         <ResponsiveContainer width="100%" height={250}>
@@ -420,7 +404,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
               stroke={CHART_PRIMARY_COLOR}
               strokeWidth={3}
               dot={false}
-              name="Jets up now"
+              name="Observed"
             />
             <Line
               type="linear"
@@ -429,28 +413,24 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
               strokeWidth={2}
               strokeDasharray="7 6"
               dot={false}
-              name="Model says"
+              name="Expected"
               isAnimationActive={false}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
       <div className="chart-subsection chart-summary-section">
-        <div className="chart-subsection-header">
-          <strong>How The Model Calibrates</strong>
-          <span>{summaryCopy}</span>
-        </div>
-        <div className="summary-stack chart-summary-stack">
-          {summaryMetrics.map((metric) => (
-            <MetricBlock
-              key={metric.label}
-              label={metric.label}
-              value={metric.value}
-              note={metric.note}
-              emphasis={metric.emphasis || 'warm'}
-            />
-          ))}
-        </div>
+        <p className="panel-lede">{summaryCopy}</p>
+        <table className="summary-table" border="1">
+          <tbody>
+            {summaryMetrics.map((metric) => (
+              <tr key={metric.note}>
+                <td>{metric.value}</td>
+                <td>{metric.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   )
@@ -471,10 +451,7 @@ function DailyChartPanel({ data, isNarrowLayout }) {
     return (
       <section className="panel chart-panel">
         <div className="panel-header">
-          <div>
-            <p className="eyebrow">Precedent Archive</p>
-            <h2>Daily Airborne Counts</h2>
-          </div>
+          <div><h2>Airborne History</h2></div>
         </div>
         <div className="empty-state">No historical daily data is available yet.</div>
       </section>
@@ -527,10 +504,7 @@ function DailyChartPanel({ data, isNarrowLayout }) {
   return (
     <section className="panel chart-panel history-panel">
       <div className="panel-header">
-        <div>
-          <p className="eyebrow">Precedent Archive</p>
-          <h2>{chartTitle}</h2>
-        </div>
+        <div><h2>{chartTitle}</h2></div>
       </div>
       <div className="chart-toolbar">
         <div className="chart-range-copy">
@@ -538,7 +512,6 @@ function DailyChartPanel({ data, isNarrowLayout }) {
             {formatLongDate(visibleStart)} to {formatLongDate(visibleEnd)}
           </strong>
           <span>{formatCount(visibleData.length)} daily samples in view</span>
-          <span>Weekday baseline built from the last 365 UTC days of airborne counts.</span>
         </div>
         <div className="chart-preset-group" role="group" aria-label="Historical zoom presets">
           <button type="button" className="chart-preset" onClick={() => applyPreset(30)}>
@@ -610,8 +583,8 @@ function DailyChartPanel({ data, isNarrowLayout }) {
       </div>
       <div className="chart-subsection">
         <div className="chart-subsection-header">
-          <strong>Excess Over Weekday Expectation</strong>
-          <span>Positive values mean more private jets were airborne than the weekday model expected.</span>
+          <strong>Difference From Weekday Estimate</strong>
+          <span>Positive values indicate more airborne aircraft than the weekday estimate.</span>
         </div>
         <div className="chart-frame chart-frame-secondary">
           <ResponsiveContainer width="100%" height={180}>
@@ -731,10 +704,7 @@ function GlobalMap({ aircraft }) {
   return (
     <section className="panel map-panel">
       <div className="panel-header">
-        <div>
-          <p className="eyebrow">Escape Grid</p>
-          <h2>Where The Lifeboats Are</h2>
-        </div>
+        <div><h2>Aircraft Positions</h2></div>
         <span className="map-badge">{aircraft.length} aloft</span>
       </div>
 
@@ -825,10 +795,7 @@ function ModelSummaryList({ aircraft }) {
   return (
     <section className="panel list-panel">
       <div className="panel-header">
-        <div>
-          <p className="eyebrow">Exit Fleet Mix</p>
-          <h2>Who Has Wheels Up</h2>
-        </div>
+        <div><h2>Aircraft By Model</h2></div>
         <span className="map-badge">{formatCount(modelSummary.length)} types</span>
       </div>
       {modelSummary.length ? (
@@ -847,7 +814,7 @@ function ModelSummaryList({ aircraft }) {
         </ul>
       ) : (
         <div className="empty-state">
-          No tracked aircraft are airborne in the latest cached heatmap. For the moment, the runway is quiet.
+          No tracked aircraft are currently airborne in the latest cached heatmap.
         </div>
       )}
     </section>
@@ -905,8 +872,7 @@ function App() {
     return (
       <main className="app-shell">
         <section className="panel error-panel">
-          <p className="eyebrow">Signal Loss</p>
-          <h1>The Siren Went Quiet</h1>
+          <h1>Data Unavailable</h1>
           <p>{error}</p>
         </section>
       </main>
@@ -917,8 +883,7 @@ function App() {
     return (
       <main className="app-shell">
         <section className="panel loading-panel">
-          <p className="eyebrow">Civil Defense Boot</p>
-          <h1>Tuning The Doom Receiver…</h1>
+          <h1>Loading</h1>
         </section>
       </main>
     )
@@ -955,33 +920,29 @@ function App() {
   const sameTimeDelta =
     Number(compositeSignal.actualConcurrentCount || 0) - Number(timeOfDaySignal?.concurrentMean || 0)
   const rollingSummaryCopy =
-    "The dial does not move just because mornings are busy or Wednesdays run hot. It blends the same date last year, recent matching weekdays, and the last week's intraday rhythm to estimate how many aircraft should be airborne before anyone starts acting unusually prepared."
+    "The expected concurrent count combines the same date last year, recent matching weekdays, and the recent time-of-day pattern. The weekday estimate is based on the last 365 UTC days of airborne counts."
   const rollingSummaryMetrics = [
     {
-      label: 'Panic spread',
       value: formatDelta(concurrentDelta),
-      note: 'Difference between the actual airborne count and the modelled calm',
+      note: 'Difference between the observed concurrent count and the model estimate.',
     },
     {
-      label: 'Weekday excuse',
       value: formatDelta(weekdayDelta),
-      note: `Difference versus the ${weekdayWindowLabel.toLowerCase()} rolling mean`,
+      note: `Difference from the ${weekdayWindowLabel.toLowerCase()} rolling mean.`,
     },
     {
-      label: 'Holiday excuse',
       value: yearAgoDelta != null ? formatDelta(yearAgoDelta) : 'n/a',
       note:
         yearAgoSignal?.percentChange != null
-          ? `${formatSignedPercent(yearAgoSignal.percentChange)} versus the nearest sample one year ago`
-          : 'Year-ago sample unavailable',
+          ? `${formatSignedPercent(yearAgoSignal.percentChange)} relative to the nearest sample one year earlier.`
+          : 'No comparable year-ago sample is available.',
     },
     {
-      label: 'Clock excuse',
       value: formatDelta(sameTimeDelta),
       note:
         timeOfDaySignal?.sampleCount
-          ? `${formatCount(timeOfDaySignal.sampleCount)} prior same-time samples in the last week`
-          : 'No recent same-time samples available',
+          ? `Based on ${formatCount(timeOfDaySignal.sampleCount)} same-time samples from the last week.`
+          : 'No recent same-time samples are available.',
     },
   ]
 
@@ -996,14 +957,14 @@ function App() {
 
       {!dashboard.warning && !liveStatus?.latestSampledAt ? (
         <section className="status-banner">
-          <strong>Awaiting first sweep.</strong>
-          <span>The backend polls the newest heatmap every 30 minutes and serves the last one instantly.</span>
+          <strong>No recent sweep.</strong>
+          <span>The backend polls the newest heatmap every 30 minutes and serves the latest cached sample.</span>
         </section>
       ) : null}
 
       {liveStatus?.lastError ? (
         <section className="status-banner">
-          <strong>Fallout monitor stalled.</strong>
+          <strong>Refresh error.</strong>
           <span>
             {liveStatus.lastError}
             {liveStatus.nextRefreshAt ? ` Next sweep: ${formatTimestamp(liveStatus.nextRefreshAt)}.` : ''}
@@ -1013,7 +974,6 @@ function App() {
 
       <section className="focus-grid">
         <section className="panel hero-copy-panel">
-          <p className="eyebrow">Continuity Monitor</p>
           <h1>Billionaire Evacuation Index</h1>
           <img
             className="hero-professor-image"
@@ -1021,18 +981,16 @@ function App() {
             alt="Tropical shoreline with a distant mushroom cloud"
           />
           <p className="hero-copy">
-            An early-warning instrument built on one impolite theory: if catastrophe is coming, the people with
-            private terminals, long-range jets, and somewhere else to be may hear it first.
+            This dashboard tracks a cohort of private aircraft and compares current airborne activity against recent
+            historical baselines.
           </p>
           <p className="hero-caption">
-            Three excuses are baked in before the dial moves: same season last year, same weekday over the last month,
-            and the last week's usual time-of-day rhythm. What remains is the scramble.
+            The current estimate combines year-over-year, weekday, and time-of-day comparisons.
           </p>
         </section>
         <div className="dial-stack">
           <EmergencySummary
-            eyebrow="Evacuation Thermometer"
-            title="Private Jet Scramble Index"
+            title="Current Assessment"
             signal={compositeSignal}
             latestSweep={formatTimestamp(dashboard.current?.asOf)}
             actualCount={compositeSignal.actualConcurrentCount}
