@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import { startTransition, useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -32,17 +32,12 @@ const worldProjection = geoEqualEarth().fitExtent(
 const worldPath = geoPath(worldProjection)
 const worldGraticule = geoPath(worldProjection)(geoGraticule10())
 
-const DIAL_START = -140
-const DIAL_END = 140
-const DIAL_HOT_START_SIGMA = 8.0
-const DIAL_HOT_START_RATIO = 0.75
-const DIAL_SIGMA_RANGE = DIAL_HOT_START_SIGMA / DIAL_HOT_START_RATIO
-const DIAL_WARM_START_RATIO = 0.5
-const DIAL_WARM_START_SIGMA = DIAL_SIGMA_RANGE * DIAL_WARM_START_RATIO
 const NARROW_HISTORY_BREAKPOINT = 820
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const CHART_TICK_COLOR = '#333333'
+const CHART_TICK_COLOR = '#000000'
 const CHART_GRID_COLOR = '#d4d4d4'
+const CHART_PRIMARY_COLOR = '#0000ee'
+const CHART_SECONDARY_COLOR = '#808080'
 const CHART_TOOLTIP_STYLE = {
   background: '#ffffff',
   border: '1px solid #999999',
@@ -63,21 +58,6 @@ const alertCopy = {
     label: 'Bunker Run',
     detail: 'The private-jet scramble is materially above precedent. If someone got the memo early, this is the zone.',
   },
-}
-
-function polarToCartesian(cx, cy, radius, angle) {
-  const radians = ((angle - 90) * Math.PI) / 180
-  return {
-    x: cx + radius * Math.cos(radians),
-    y: cy + radius * Math.sin(radians),
-  }
-}
-
-function describeArc(cx, cy, radius, startAngle, endAngle) {
-  const start = polarToCartesian(cx, cy, radius, endAngle)
-  const end = polarToCartesian(cx, cy, radius, startAngle)
-  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1'
-  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`
 }
 
 function formatCount(value) {
@@ -287,28 +267,9 @@ function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
   return isNarrowLayout
 }
 
-function clampSigmaShift(value) {
-  return Math.max(0, Math.min(DIAL_SIGMA_RANGE, Number(value || 0)))
-}
-
-function sigmaToNeedleAngle(value) {
-  return DIAL_START + (clampSigmaShift(value) / DIAL_SIGMA_RANGE) * (DIAL_END - DIAL_START)
-}
-
-function sigmaToDialAngle(value) {
-  return DIAL_START + (Math.max(0, Math.min(DIAL_SIGMA_RANGE, value)) / DIAL_SIGMA_RANGE) * (DIAL_END - DIAL_START)
-}
-
-function getShiftEmphasis(sigmaShift) {
-  if (sigmaShift <= -0.25) {
-    return 'cool'
-  }
-
-  if (sigmaShift >= 0.25) {
-    return 'hot'
-  }
-
-  return 'warm'
+function getEmergencyLevel(sigmaShift) {
+  const normalizedSigma = Math.max(0, Number(sigmaShift || 0))
+  return Math.min(5, Math.max(1, Math.floor(normalizedSigma / 2) + 1))
 }
 
 function buildWeekdayPredictionSeries(data) {
@@ -367,9 +328,9 @@ function buildDashboardRequestUrl() {
   return url.toString()
 }
 
-function MetricBlock({ label, value, note, emphasis = 'warm' }) {
+function MetricBlock({ label, value, note }) {
   return (
-    <div className={`metric-block metric-block-${emphasis}`}>
+    <div className="metric-block">
       <span className="metric-label">{label}</span>
       <strong className="metric-value">{value}</strong>
       <span className="metric-note">{note}</span>
@@ -377,11 +338,10 @@ function MetricBlock({ label, value, note, emphasis = 'warm' }) {
   )
 }
 
-function SignalDial({ eyebrow, title, signal, lede, stats }) {
-  const gradientId = useId().replace(/:/g, '')
+function EmergencySummary({ eyebrow, title, signal, latestSweep, actualCount, expectedCount, trackedCount }) {
   const sigmaShift = signal?.sigmaShift ?? signal?.zScore ?? 0
-  const needleAngle = sigmaToNeedleAngle(sigmaShift)
   const label = alertCopy[signal?.alertLevel || 'normal']
+  const emergencyLevel = getEmergencyLevel(sigmaShift)
 
   return (
     <section className="panel dial-panel">
@@ -390,89 +350,19 @@ function SignalDial({ eyebrow, title, signal, lede, stats }) {
           <p className="eyebrow">{eyebrow}</p>
           <h2>{title}</h2>
         </div>
-        <span className={`signal-pill signal-${signal?.alertLevel || 'normal'}`}>
-          {label.label}
-        </span>
       </div>
-
-      <div className="dial-wrap">
-        <svg viewBox="0 0 360 240" className="dial-svg" role="img" aria-label="Alarm gauge">
-          <defs>
-            <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="180" y1="180" x2="180" y2="74">
-              <stop offset="0%" stopColor="#b8ff66" />
-              <stop offset="45%" stopColor="#ffc24c" />
-              <stop offset="100%" stopColor="#ff5a33" />
-            </linearGradient>
-          </defs>
-
-          <path d={describeArc(180, 180, 112, DIAL_START, DIAL_END)} className="dial-track" />
-          <path
-            d={describeArc(180, 180, 112, DIAL_START, sigmaToDialAngle(DIAL_WARM_START_SIGMA))}
-            className="dial-segment dial-segment-cool"
-          />
-          <path
-            d={describeArc(180, 180, 112, sigmaToDialAngle(DIAL_WARM_START_SIGMA), sigmaToDialAngle(DIAL_HOT_START_SIGMA))}
-            className="dial-segment dial-segment-warm"
-          />
-          <path
-            d={describeArc(180, 180, 112, sigmaToDialAngle(DIAL_HOT_START_SIGMA), DIAL_END)}
-            className="dial-segment dial-segment-hot"
-          />
-          <path d={describeArc(180, 180, 96, DIAL_START, DIAL_END)} className="dial-inner-track" />
-
-          {Array.from({ length: 9 }).map((_, index) => {
-            const angle = DIAL_START + (index / 8) * (DIAL_END - DIAL_START)
-            const start = polarToCartesian(180, 180, 86, angle)
-            const end = polarToCartesian(180, 180, 100, angle)
-            return (
-              <line
-                key={angle}
-                x1={start.x}
-                y1={start.y}
-                x2={end.x}
-                y2={end.y}
-                className="dial-tick"
-              />
-            )
-          })}
-
-          <g
-            className="dial-needle"
-            transform={`rotate(${needleAngle} 180 180)`}
-          >
-            <line
-              x1="180"
-              y1="180"
-              x2="180"
-              y2="74"
-              stroke={`url(#${gradientId})`}
-              strokeWidth="5"
-              strokeLinecap="round"
-            />
-            <circle
-              cx="180"
-              cy="180"
-              r="10"
-              fill="#fff6e7"
-              stroke="rgba(255, 184, 77, 0.25)"
-              strokeWidth="6"
-            />
-          </g>
-          <circle cx="180" cy="180" r="132" className="dial-frame" />
-        </svg>
-      </div>
-
-      <p className="panel-lede">{lede || label.detail}</p>
-      <div className="metric-grid">
-        {stats.map((stat) => (
-          <MetricBlock
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            note={stat.note}
-            emphasis={stat.emphasis || 'warm'}
-          />
-        ))}
+      <p className="emergency-line">
+        <strong>Emergency level: {emergencyLevel}/5.</strong> {label.detail}
+      </p>
+      <p className="panel-lede">
+        Level 5 corresponds to the red zone. The current signal is {formatSigned(sigmaShift)} relative to the model
+        baseline.
+      </p>
+      <div className="summary-text-block">
+        <p><strong>Latest sweep:</strong> {latestSweep}</p>
+        <p><strong>Aircraft currently airborne:</strong> {formatCount(actualCount)}</p>
+        <p><strong>Model expectation:</strong> {formatCount(expectedCount)}</p>
+        <p><strong>Tracked escape craft:</strong> {formatCount(trackedCount)}</p>
       </div>
     </section>
   )
@@ -516,7 +406,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
             <Line
               type="linear"
               dataKey="concurrentCount"
-              stroke="#ff7a4a"
+              stroke={CHART_PRIMARY_COLOR}
               strokeWidth={3}
               dot={false}
               name="Jets up now"
@@ -524,7 +414,7 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
             <Line
               type="linear"
               dataKey="predictedConcurrentCount"
-              stroke="#d6ff6a"
+              stroke={CHART_SECONDARY_COLOR}
               strokeWidth={2}
               strokeDasharray="7 6"
               dot={false}
@@ -656,8 +546,8 @@ function DailyChartPanel({ data, isNarrowLayout }) {
           <AreaChart data={visibleData} margin={{ top: 14, right: 28, left: 6, bottom: 0 }}>
             <defs>
               <linearGradient id="dailyFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ff6d40" stopOpacity="0.82" />
-                <stop offset="100%" stopColor="#ff6d40" stopOpacity="0" />
+                <stop offset="0%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.28" />
+                <stop offset="100%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0" />
               </linearGradient>
             </defs>
             <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
@@ -689,7 +579,7 @@ function DailyChartPanel({ data, isNarrowLayout }) {
             <Area
               type="monotone"
               dataKey="uniqueAirborneCount"
-              stroke="#ff6d40"
+              stroke={CHART_PRIMARY_COLOR}
               strokeWidth={3}
               fill="url(#dailyFill)"
               name="Unique airborne"
@@ -697,7 +587,7 @@ function DailyChartPanel({ data, isNarrowLayout }) {
             <Area
               type="monotone"
               dataKey="predictedCount"
-              stroke="#d6ff6a"
+              stroke={CHART_SECONDARY_COLOR}
               strokeWidth={2}
               strokeDasharray="7 6"
               fillOpacity={0}
@@ -717,8 +607,8 @@ function DailyChartPanel({ data, isNarrowLayout }) {
             <AreaChart data={visibleData} margin={{ top: 8, right: 28, left: 6, bottom: 0 }}>
               <defs>
                 <linearGradient id="divergenceFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#d6ff6a" stopOpacity="0.45" />
-                  <stop offset="100%" stopColor="#d6ff6a" stopOpacity="0.02" />
+                  <stop offset="0%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.18" />
+                  <stop offset="100%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.02" />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
@@ -748,7 +638,7 @@ function DailyChartPanel({ data, isNarrowLayout }) {
               <Area
                 type="monotone"
                 dataKey="divergence"
-                stroke="#d6ff6a"
+                stroke={CHART_PRIMARY_COLOR}
                 strokeWidth={2}
                 fill="url(#divergenceFill)"
                 name="Divergence"
@@ -780,14 +670,14 @@ function DailyChartPanel({ data, isNarrowLayout }) {
           <AreaChart data={data} margin={{ top: 0, right: 28, left: 6, bottom: 0 }}>
             <defs>
               <linearGradient id="dailyOverviewFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#ffb84d" stopOpacity="0.45" />
-                <stop offset="100%" stopColor="#ffb84d" stopOpacity="0.02" />
+                <stop offset="0%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.2" />
+                <stop offset="100%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.02" />
               </linearGradient>
             </defs>
             <Area
               type="monotone"
               dataKey="uniqueAirborneCount"
-              stroke="#ffb84d"
+              stroke={CHART_PRIMARY_COLOR}
               strokeWidth={1.5}
               fill="url(#dailyOverviewFill)"
               isAnimationActive={false}
@@ -806,8 +696,8 @@ function DailyChartPanel({ data, isNarrowLayout }) {
                 setZoomRange(clampZoomRange(nextRange, data.length))
               }}
               travellerWidth={14}
-              stroke="#ffb84d"
-              fill="rgba(16, 29, 40, 0.95)"
+              stroke={CHART_PRIMARY_COLOR}
+              fill="#f2f2f2"
               tickFormatter={formatCompactDate}
             />
           </AreaChart>
@@ -941,7 +831,6 @@ function ModelSummaryList({ aircraft }) {
 function App() {
   const [dashboard, setDashboard] = useState(null)
   const [error, setError] = useState(null)
-  const [showDetails, setShowDetails] = useState(false)
 
   const applyDashboard = useEffectEvent((nextDashboard) => {
     startTransition(() => {
@@ -1014,7 +903,6 @@ function App() {
   const rollingData = dashboard.trends?.rolling ?? []
   const liveAircraft = dashboard.liveAircraft ?? []
   const liveStatus = dashboard.liveStatus ?? null
-  const alert = alertCopy[dashboard.current?.alertLevel || 'normal']
   const compositeSignal = dashboard.signals?.composite ?? {
     asOf: dashboard.current?.asOf,
     actualConcurrentCount: dashboard.current?.concurrentCount,
@@ -1040,7 +928,6 @@ function App() {
   const yearAgoDelta = yearAgoSignal?.deltaCount
   const sameTimeDelta =
     Number(compositeSignal.actualConcurrentCount || 0) - Number(timeOfDaySignal?.concurrentMean || 0)
-  const compositeEmphasis = getShiftEmphasis(compositeSignal.sigmaShift ?? 0)
   const rollingSummaryCopy =
     "The dial does not move just because mornings are busy or Wednesdays run hot. It blends the same date last year, recent matching weekdays, and the last week's intraday rhythm to estimate how many aircraft should be airborne before anyone starts acting unusually prepared."
   const rollingSummaryMetrics = [
@@ -1048,13 +935,11 @@ function App() {
       label: 'Panic spread',
       value: formatDelta(concurrentDelta),
       note: 'Difference between the actual airborne count and the modelled calm',
-      emphasis: compositeEmphasis,
     },
     {
       label: 'Weekday excuse',
       value: formatDelta(weekdayDelta),
       note: `Difference versus the ${weekdayWindowLabel.toLowerCase()} rolling mean`,
-      emphasis: getShiftEmphasis(weekdaySignal.sigmaShift),
     },
     {
       label: 'Holiday excuse',
@@ -1063,7 +948,6 @@ function App() {
         yearAgoSignal?.percentChange != null
           ? `${formatSignedPercent(yearAgoSignal.percentChange)} versus the nearest sample one year ago`
           : 'Year-ago sample unavailable',
-      emphasis: getShiftEmphasis(yearAgoSignal?.sigmaShift ?? 0),
     },
     {
       label: 'Clock excuse',
@@ -1072,7 +956,6 @@ function App() {
         timeOfDaySignal?.sampleCount
           ? `${formatCount(timeOfDaySignal.sampleCount)} prior same-time samples in the last week`
           : 'No recent same-time samples available',
-      emphasis: getShiftEmphasis(timeOfDaySignal?.sigmaShift ?? 0),
     },
   ]
 
@@ -1121,44 +1004,14 @@ function App() {
           </p>
         </section>
         <div className="dial-stack">
-          <SignalDial
+          <EmergencySummary
             eyebrow="Evacuation Thermometer"
             title="Private Jet Scramble Index"
             signal={compositeSignal}
-            lede={alert.detail}
-            stats={[
-              {
-                label: 'Jets up now',
-                value: formatCount(compositeSignal.actualConcurrentCount),
-                note: 'Tracked aircraft currently airborne in the latest half-hour snapshot',
-              },
-              {
-                label: 'Model says',
-                value: formatCount(compositeSignal.expectedConcurrentCount),
-                note: 'Expected airborne count after the alibis and seasonal excuses are applied',
-              },
-              {
-                label: 'Tracked escape craft',
-                value: formatCount(dashboard.cohort?.trackedCount ?? dashboard.watchlist?.trackedCount),
-                note: 'FAA-derived business-jet cohort currently monitored by the system',
-              },
-              {
-                label: 'Latest sweep',
-                value: formatTimestamp(dashboard.current?.asOf),
-                note: 'Most recent published half-hour heatmap sample',
-              },
-              {
-                label: 'Panic offset',
-                value: formatSigned(compositeSignal.sigmaShift),
-                note: 'Distance between the actual scramble and the modelled calm',
-                emphasis: compositeEmphasis,
-              },
-              {
-                label: 'Historical alibi',
-                value: formatCount(compositeSignal.blendedRollingBaseline),
-                note: 'Average of the year-ago rolling count and the recent matching-weekday rolling mean',
-              },
-            ]}
+            latestSweep={formatTimestamp(dashboard.current?.asOf)}
+            actualCount={compositeSignal.actualConcurrentCount}
+            expectedCount={compositeSignal.expectedConcurrentCount}
+            trackedCount={dashboard.cohort?.trackedCount ?? dashboard.watchlist?.trackedCount}
           />
         </div>
       </section>
@@ -1167,35 +1020,11 @@ function App() {
         <GlobalMap aircraft={liveAircraft} />
       </section>
 
-      <section className="panel reveal-panel">
-        <div className="panel-header reveal-panel-header">
-          <div>
-            <p className="eyebrow">Archive Access</p>
-            <h2>{showDetails ? 'Collapse The Background Detail' : 'Click For More Information'}</h2>
-          </div>
-        </div>
-        <p className="panel-lede">
-          {showDetails
-            ? 'Historical precedent, model calibration, and fleet composition are expanded below.'
-            : 'Open the deeper readout to inspect the recent panic trace, the yearly archive, and the visible aircraft mix.'}
-        </p>
-        <button
-          type="button"
-          className="reveal-button"
-          onClick={() => setShowDetails((currentValue) => !currentValue)}
-          aria-expanded={showDetails}
-        >
-          {showDetails ? 'Hide Full Readout' : 'Show Full Readout'}
-        </button>
+      <section className="details-stack">
+        <RollingChart data={rollingData} summaryCopy={rollingSummaryCopy} summaryMetrics={rollingSummaryMetrics} />
+        <DailyChart data={modeledDailyData} />
+        <ModelSummaryList aircraft={liveAircraft} />
       </section>
-
-      {showDetails ? (
-        <section className="details-stack">
-          <RollingChart data={rollingData} summaryCopy={rollingSummaryCopy} summaryMetrics={rollingSummaryMetrics} />
-          <DailyChart data={modeledDailyData} />
-          <ModelSummaryList aircraft={liveAircraft} />
-        </section>
-      ) : null}
     </main>
   )
 }

@@ -70,7 +70,7 @@
 .map-hover-header span,
 .map-hover-empty span,
 .map-hover-grid dt {
-  color: #333333;
+  color: #000000;
 }
 
 .hero-copy-panel,
@@ -124,12 +124,9 @@
   background: #f5f5f5;
 }
 
-.signal-elevated {
-  background: #fff7cc;
-}
-
+.signal-elevated,
 .signal-alarm {
-  background: #ffd6d6;
+  background: #f5f5f5;
 }
 
 .status-banner {
@@ -147,12 +144,6 @@
 .dial-stack {
   display: grid;
   gap: 16px;
-}
-
-.reveal-panel {
-  display: grid;
-  gap: 12px;
-  align-items: start;
 }
 
 .reveal-button,
@@ -180,58 +171,18 @@
   outline-offset: 2px;
 }
 
-.dial-wrap {
-  display: flex;
-  justify-content: center;
-  padding: 8px 0;
+.emergency-line {
+  margin-bottom: 10px;
 }
 
-.dial-svg {
-  width: 100%;
-  max-width: 420px;
+.summary-text-block {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
 }
 
-.dial-frame {
-  fill: none;
-  stroke: #999999;
-  stroke-width: 1;
-}
-
-.dial-track {
-  fill: none;
-  stroke: #dddddd;
-  stroke-width: 22;
-  stroke-linecap: round;
-}
-
-.dial-inner-track {
-  fill: none;
-  stroke: #bbbbbb;
-  stroke-width: 1;
-}
-
-.dial-segment {
-  fill: none;
-  stroke-width: 22;
-  stroke-linecap: round;
-}
-
-.dial-segment-cool {
-  stroke: #cccccc;
-}
-
-.dial-segment-warm {
-  stroke: #9999cc;
-}
-
-.dial-segment-hot {
-  stroke: #cc6666;
-}
-
-.dial-tick {
-  stroke: #666666;
-  stroke-width: 1.5;
-  stroke-linecap: round;
+.summary-text-block p:last-child {
+  margin-bottom: 0;
 }
 
 .metric-grid,
@@ -252,14 +203,6 @@
   border: 1px solid #cccccc;
   border-radius: 0;
   background: #ffffff;
-}
-
-.metric-block-hot {
-  background: #fff7f0;
-}
-
-.metric-block-cool {
-  background: #f8fff8;
 }
 
 .metric-label {
@@ -597,6 +540,21 @@
     width: 100%;
     max-width: 280px;
     margin: 0 0 12px;
+  }
+
+  .map-frame {
+    display: grid;
+    gap: 12px;
+  }
+
+  .map-hover-card {
+    position: static;
+    width: 100%;
+    order: 2;
+  }
+
+  .map-svg {
+    order: 1;
   }
 
   .flight-list li,
