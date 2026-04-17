@@ -52,7 +52,16 @@ jobs:
       - name: Restore deployment state
         run: |
           mkdir -p data
-          npx wrangler r2 object get "${STATE_BUCKET}/ews.sqlite" --file data/ews.sqlite --remote
+          for attempt in 1 2 3 4 5; do
+            if npx wrangler r2 object get "${STATE_BUCKET}/ews.sqlite" --file data/ews.sqlite --remote; then
+              exit 0
+            fi
+            echo "R2 restore attempt ${attempt} failed."
+            if [ "$attempt" -eq 5 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Roll daily history forward
         run: python3 scripts/backfill_history.py --relative-days 1
@@ -64,12 +73,31 @@ jobs:
         run: node scripts/export_dashboard_snapshot.js --output tmp/dashboard.json
 
       - name: Upload deployment state
-        run: npx wrangler r2 object put "${STATE_BUCKET}/ews.sqlite" --file data/ews.sqlite --remote
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if npx wrangler r2 object put "${STATE_BUCKET}/ews.sqlite" --file data/ews.sqlite --remote; then
+              exit 0
+            fi
+            echo "R2 state upload attempt ${attempt} failed."
+            if [ "$attempt" -eq 5 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Publish live snapshot
         run: |
-          npx wrangler r2 object put "${PUBLIC_BUCKET}/dashboard.json" \
-            --file tmp/dashboard.json \
-            --remote \
-            --content-type application/json \
-            --cache-control "public, max-age=300"
+          for attempt in 1 2 3 4 5; do
+            if npx wrangler r2 object put "${PUBLIC_BUCKET}/dashboard.json" \
+              --file tmp/dashboard.json \
+              --remote \
+              --content-type application/json \
+              --cache-control "public, max-age=300"; then
+              exit 0
+            fi
+            echo "R2 snapshot publish attempt ${attempt} failed."
+            if [ "$attempt" -eq 5 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
