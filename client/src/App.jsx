@@ -21,6 +21,7 @@ const DASHBOARD_CACHE_BUSTER_MINUTES = 5
 const DASHBOARD_POLL_INTERVAL_MS = 5 * 60_000
 const MAP_WIDTH = 800
 const MAP_HEIGHT = 410
+const ARCHIVE_DAY_MS = 24 * 60 * 60 * 1000
 const worldGeographies = feature(worldAtlas, worldAtlas.objects.countries).features
 
 const NARROW_HISTORY_BREAKPOINT = 820
@@ -160,6 +161,10 @@ function normalizeModelLabel(value) {
   return normalized || 'Unknown model'
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
 function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
   const [isNarrowLayout, setIsNarrowLayout] = useState(() => {
     if (typeof window === 'undefined') {
@@ -259,9 +264,20 @@ function ArchiveChart({ data }) {
 }
 
 function ArchiveChartPanel({ data, defaultWindowDays }) {
-  const [windowDays, setWindowDays] = useState(defaultWindowDays)
+  const hasData = data.length > 0
+  const latestTimestamp = Date.parse(data[data.length - 1]?.sampledAt || 0)
+  const earliestTimestamp = Date.parse(data[0]?.sampledAt || 0)
+  const maxDaysAvailable = Math.max(1, Math.ceil((latestTimestamp - earliestTimestamp) / ARCHIVE_DAY_MS))
+  const [rangeDaysAgo, setRangeDaysAgo] = useState(() => ({
+    startDaysAgo: clamp(defaultWindowDays, 1, maxDaysAvailable),
+    endDaysAgo: 0,
+  }))
+  const clampedRangeDaysAgo = {
+    startDaysAgo: clamp(rangeDaysAgo.startDaysAgo, 1, maxDaysAvailable),
+    endDaysAgo: clamp(rangeDaysAgo.endDaysAgo, 0, Math.max(0, clamp(rangeDaysAgo.startDaysAgo, 1, maxDaysAvailable) - 1)),
+  }
 
-  if (!data.length) {
+  if (!hasData) {
     return (
       <section className="panel chart-panel">
         <div className="panel-header">
@@ -272,12 +288,26 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
     )
   }
 
-  const latestTimestamp = Date.parse(data[data.length - 1]?.sampledAt || 0)
-  const lowerBound =
-    windowDays >= 365 ? Number.NEGATIVE_INFINITY : latestTimestamp - windowDays * 24 * 60 * 60 * 1000
-  const visibleData = data.filter((sample) => Date.parse(sample.sampledAt) >= lowerBound)
+  function setArchiveRange(startDaysAgo, endDaysAgo = 0) {
+    const nextStart = clamp(startDaysAgo, 1, maxDaysAvailable)
+    const nextEnd = clamp(endDaysAgo, 0, Math.max(0, nextStart - 1))
+    setRangeDaysAgo({
+      startDaysAgo: nextStart,
+      endDaysAgo: nextEnd,
+    })
+  }
+
+  const lowerBound = latestTimestamp - clampedRangeDaysAgo.startDaysAgo * ARCHIVE_DAY_MS
+  const upperBound = latestTimestamp - clampedRangeDaysAgo.endDaysAgo * ARCHIVE_DAY_MS
+  const visibleData = data.filter((sample) => {
+    const sampledAt = Date.parse(sample.sampledAt)
+    return sampledAt >= lowerBound && sampledAt <= upperBound
+  })
   const visibleStart = visibleData[0]?.sampledAt
   const visibleEnd = visibleData[visibleData.length - 1]?.sampledAt
+  const visibleWindowDays = Math.max(1, clampedRangeDaysAgo.startDaysAgo - clampedRangeDaysAgo.endDaysAgo)
+  const newerHandlePercent = (clampedRangeDaysAgo.endDaysAgo / maxDaysAvailable) * 100
+  const olderHandlePercent = (clampedRangeDaysAgo.startDaysAgo / maxDaysAvailable) * 100
 
   return (
     <section className="panel chart-panel history-panel">
@@ -292,25 +322,60 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
         </div>
       </div>
       <div className="chart-toolbar chart-toolbar-archive">
-        <label className="chart-slider-label">
-          <span>Days in view: {windowDays}</span>
-          <input
-            type="range"
-            min="3"
-            max="365"
-            step="1"
-            value={windowDays}
-            onChange={(event) => setWindowDays(Number(event.target.value))}
-          />
-        </label>
+        <div className="chart-range-slider">
+          <div className="chart-range-slider-copy">
+            <span>Newer</span>
+            <span>Older</span>
+          </div>
+          <div className="chart-range-slider-stack">
+            <div className="chart-range-track" />
+            <div
+              className="chart-range-track-active"
+              style={{
+                left: `${newerHandlePercent}%`,
+                right: `${100 - olderHandlePercent}%`,
+              }}
+            />
+            <input
+              className="chart-range-input chart-range-input-newer"
+              type="range"
+              min="0"
+              max={maxDaysAvailable}
+              step="1"
+              value={clampedRangeDaysAgo.endDaysAgo}
+              onChange={(event) =>
+                setArchiveRange(
+                  clampedRangeDaysAgo.startDaysAgo,
+                  Math.min(Number(event.target.value), clampedRangeDaysAgo.startDaysAgo - 1),
+                )
+              }
+              aria-label="Newer archive boundary"
+            />
+            <input
+              className="chart-range-input chart-range-input-older"
+              type="range"
+              min="1"
+              max={maxDaysAvailable}
+              step="1"
+              value={clampedRangeDaysAgo.startDaysAgo}
+              onChange={(event) =>
+                setArchiveRange(
+                  Math.max(Number(event.target.value), clampedRangeDaysAgo.endDaysAgo + 1),
+                  clampedRangeDaysAgo.endDaysAgo,
+                )
+              }
+              aria-label="Older archive boundary"
+            />
+          </div>
+        </div>
         <fieldset className="chart-radio-group">
           <legend className="sr-only">Historical archive window</legend>
           <label className="chart-radio-option">
             <input
               type="radio"
               name="archive-window"
-              checked={windowDays === 3}
-              onChange={() => setWindowDays(3)}
+              checked={clampedRangeDaysAgo.startDaysAgo === 3 && clampedRangeDaysAgo.endDaysAgo === 0}
+              onChange={() => setArchiveRange(3, 0)}
             />
             <span>3 days</span>
           </label>
@@ -318,8 +383,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={windowDays === 30}
-              onChange={() => setWindowDays(30)}
+              checked={clampedRangeDaysAgo.startDaysAgo === 30 && clampedRangeDaysAgo.endDaysAgo === 0}
+              onChange={() => setArchiveRange(30, 0)}
             />
             <span>30D</span>
           </label>
@@ -327,8 +392,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={windowDays === 90}
-              onChange={() => setWindowDays(90)}
+              checked={clampedRangeDaysAgo.startDaysAgo === 90 && clampedRangeDaysAgo.endDaysAgo === 0}
+              onChange={() => setArchiveRange(90, 0)}
             />
             <span>90D</span>
           </label>
@@ -336,8 +401,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={windowDays === 365}
-              onChange={() => setWindowDays(365)}
+              checked={clampedRangeDaysAgo.startDaysAgo === maxDaysAvailable && clampedRangeDaysAgo.endDaysAgo === 0}
+              onChange={() => setArchiveRange(maxDaysAvailable, 0)}
             />
             <span>Full Year</span>
           </label>
@@ -349,7 +414,7 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
             <XAxis
               dataKey="sampledAt"
-              tickFormatter={(value) => formatArchiveTick(value, windowDays)}
+              tickFormatter={(value) => formatArchiveTick(value, visibleWindowDays)}
               tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
@@ -408,7 +473,7 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
               <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
               <XAxis
                 dataKey="sampledAt"
-                tickFormatter={(value) => formatArchiveTick(value, windowDays)}
+                tickFormatter={(value) => formatArchiveTick(value, visibleWindowDays)}
                 tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
