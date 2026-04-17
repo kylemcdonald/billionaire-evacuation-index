@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useState } from 'react'
+import { startTransition, useDeferredValue, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -165,6 +165,77 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 
+function findFirstIndexAtOrAfter(values, target) {
+  let low = 0
+  let high = values.length
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2)
+    if (values[mid] < target) {
+      low = mid + 1
+    } else {
+      high = mid
+    }
+  }
+
+  return clamp(low, 0, Math.max(0, values.length - 1))
+}
+
+function findLastIndexAtOrBefore(values, target) {
+  let low = 0
+  let high = values.length
+
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2)
+    if (values[mid] <= target) {
+      low = mid + 1
+    } else {
+      high = mid
+    }
+  }
+
+  return clamp(low - 1, 0, Math.max(0, values.length - 1))
+}
+
+function downsampleArchiveSeries(series, maxPoints = 960) {
+  if (series.length <= maxPoints) {
+    return series
+  }
+
+  const bucketCount = Math.max(1, Math.floor(maxPoints / 4))
+  const bucketSize = Math.ceil(series.length / bucketCount)
+  const selectedIndexes = new Set([0, series.length - 1])
+
+  for (let bucketStart = 0; bucketStart < series.length; bucketStart += bucketSize) {
+    const bucketEnd = Math.min(series.length, bucketStart + bucketSize)
+    let maxConcurrentIndex = bucketStart
+    let maxPositiveDivergenceIndex = bucketStart
+    let maxNegativeDivergenceIndex = bucketStart
+
+    for (let index = bucketStart + 1; index < bucketEnd; index += 1) {
+      if ((series[index].concurrentCount ?? 0) > (series[maxConcurrentIndex].concurrentCount ?? 0)) {
+        maxConcurrentIndex = index
+      }
+      if ((series[index].divergence ?? 0) > (series[maxPositiveDivergenceIndex].divergence ?? 0)) {
+        maxPositiveDivergenceIndex = index
+      }
+      if ((series[index].divergence ?? 0) < (series[maxNegativeDivergenceIndex].divergence ?? 0)) {
+        maxNegativeDivergenceIndex = index
+      }
+    }
+
+    selectedIndexes.add(bucketStart)
+    selectedIndexes.add(bucketEnd - 1)
+    selectedIndexes.add(maxConcurrentIndex)
+    selectedIndexes.add(maxPositiveDivergenceIndex)
+    selectedIndexes.add(maxNegativeDivergenceIndex)
+  }
+
+  return Array.from(selectedIndexes)
+    .sort((left, right) => left - right)
+    .map((index) => series[index])
+}
+
 function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
   const [isNarrowLayout, setIsNarrowLayout] = useState(() => {
     if (typeof window === 'undefined') {
@@ -265,8 +336,9 @@ function ArchiveChart({ data }) {
 
 function ArchiveChartPanel({ data, defaultWindowDays }) {
   const hasData = data.length > 0
-  const latestTimestamp = Date.parse(data[data.length - 1]?.sampledAt || 0)
-  const earliestTimestamp = Date.parse(data[0]?.sampledAt || 0)
+  const sampledAtTimestamps = useMemo(() => data.map((sample) => Date.parse(sample.sampledAt || 0)), [data])
+  const latestTimestamp = sampledAtTimestamps[sampledAtTimestamps.length - 1] || 0
+  const earliestTimestamp = sampledAtTimestamps[0] || 0
   const maxDaysAvailable = Math.max(1, Math.ceil((latestTimestamp - earliestTimestamp) / ARCHIVE_DAY_MS))
   const [rangeDaysAgo, setRangeDaysAgo] = useState(() => ({
     startDaysAgo: clamp(defaultWindowDays, 1, maxDaysAvailable),
@@ -275,17 +347,6 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
   const clampedRangeDaysAgo = {
     startDaysAgo: clamp(rangeDaysAgo.startDaysAgo, 1, maxDaysAvailable),
     endDaysAgo: clamp(rangeDaysAgo.endDaysAgo, 0, Math.max(0, clamp(rangeDaysAgo.startDaysAgo, 1, maxDaysAvailable) - 1)),
-  }
-
-  if (!hasData) {
-    return (
-      <section className="panel chart-panel">
-        <div className="panel-header">
-          <div><h2>Escape Traffic Archive</h2></div>
-        </div>
-        <div className="empty-state">No historical half-hour data is available yet.</div>
-      </section>
-    )
   }
 
   function setArchiveRange(startDaysAgo, endDaysAgo = 0) {
@@ -297,17 +358,37 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
     })
   }
 
-  const lowerBound = latestTimestamp - clampedRangeDaysAgo.startDaysAgo * ARCHIVE_DAY_MS
-  const upperBound = latestTimestamp - clampedRangeDaysAgo.endDaysAgo * ARCHIVE_DAY_MS
-  const visibleData = data.filter((sample) => {
-    const sampledAt = Date.parse(sample.sampledAt)
-    return sampledAt >= lowerBound && sampledAt <= upperBound
-  })
-  const visibleStart = visibleData[0]?.sampledAt
-  const visibleEnd = visibleData[visibleData.length - 1]?.sampledAt
+  const deferredStartDaysAgo = useDeferredValue(clampedRangeDaysAgo.startDaysAgo)
+  const deferredEndDaysAgo = useDeferredValue(clampedRangeDaysAgo.endDaysAgo)
   const visibleWindowDays = Math.max(1, clampedRangeDaysAgo.startDaysAgo - clampedRangeDaysAgo.endDaysAgo)
-  const newerHandlePercent = (clampedRangeDaysAgo.endDaysAgo / maxDaysAvailable) * 100
-  const olderHandlePercent = (clampedRangeDaysAgo.startDaysAgo / maxDaysAvailable) * 100
+  const pastHandlePercent = ((maxDaysAvailable - clampedRangeDaysAgo.startDaysAgo) / maxDaysAvailable) * 100
+  const nowHandlePercent = ((maxDaysAvailable - clampedRangeDaysAgo.endDaysAgo) / maxDaysAvailable) * 100
+
+  const { visibleData, visibleStart, visibleEnd } = useMemo(() => {
+    const lowerBound = latestTimestamp - deferredStartDaysAgo * ARCHIVE_DAY_MS
+    const upperBound = latestTimestamp - deferredEndDaysAgo * ARCHIVE_DAY_MS
+    const startIndex = findFirstIndexAtOrAfter(sampledAtTimestamps, lowerBound)
+    const endIndex = findLastIndexAtOrBefore(sampledAtTimestamps, upperBound)
+    const slicedData = startIndex <= endIndex ? data.slice(startIndex, endIndex + 1) : []
+    const downsampledData = downsampleArchiveSeries(slicedData)
+
+    return {
+      visibleData: downsampledData,
+      visibleStart: slicedData[0]?.sampledAt,
+      visibleEnd: slicedData[slicedData.length - 1]?.sampledAt,
+    }
+  }, [data, deferredEndDaysAgo, deferredStartDaysAgo, latestTimestamp, sampledAtTimestamps])
+
+  if (!hasData) {
+    return (
+      <section className="panel chart-panel">
+        <div className="panel-header">
+          <div><h2>Escape Traffic Archive</h2></div>
+        </div>
+        <div className="empty-state">No historical half-hour data is available yet.</div>
+      </section>
+    )
+  }
 
   return (
     <section className="panel chart-panel history-panel">
@@ -324,47 +405,47 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
       <div className="chart-toolbar chart-toolbar-archive">
         <div className="chart-range-slider">
           <div className="chart-range-slider-copy">
-            <span>Newer</span>
-            <span>Older</span>
+            <span>Past</span>
+            <span>Now</span>
           </div>
           <div className="chart-range-slider-stack">
             <div className="chart-range-track" />
             <div
               className="chart-range-track-active"
               style={{
-                left: `${newerHandlePercent}%`,
-                right: `${100 - olderHandlePercent}%`,
+                left: `${pastHandlePercent}%`,
+                right: `${100 - nowHandlePercent}%`,
               }}
             />
             <input
-              className="chart-range-input chart-range-input-newer"
-              type="range"
-              min="0"
-              max={maxDaysAvailable}
-              step="1"
-              value={clampedRangeDaysAgo.endDaysAgo}
-              onChange={(event) =>
-                setArchiveRange(
-                  clampedRangeDaysAgo.startDaysAgo,
-                  Math.min(Number(event.target.value), clampedRangeDaysAgo.startDaysAgo - 1),
-                )
-              }
-              aria-label="Newer archive boundary"
-            />
-            <input
-              className="chart-range-input chart-range-input-older"
+              className="chart-range-input chart-range-input-past"
               type="range"
               min="1"
               max={maxDaysAvailable}
               step="1"
-              value={clampedRangeDaysAgo.startDaysAgo}
+              value={maxDaysAvailable - clampedRangeDaysAgo.startDaysAgo}
               onChange={(event) =>
                 setArchiveRange(
-                  Math.max(Number(event.target.value), clampedRangeDaysAgo.endDaysAgo + 1),
+                  maxDaysAvailable - Number(event.target.value),
                   clampedRangeDaysAgo.endDaysAgo,
                 )
               }
-              aria-label="Older archive boundary"
+              aria-label="Past archive boundary"
+            />
+            <input
+              className="chart-range-input chart-range-input-now"
+              type="range"
+              min="0"
+              max={maxDaysAvailable}
+              step="1"
+              value={maxDaysAvailable - clampedRangeDaysAgo.endDaysAgo}
+              onChange={(event) =>
+                setArchiveRange(
+                  clampedRangeDaysAgo.startDaysAgo,
+                  maxDaysAvailable - Number(event.target.value),
+                )
+              }
+              aria-label="Current archive boundary"
             />
           </div>
         </div>
