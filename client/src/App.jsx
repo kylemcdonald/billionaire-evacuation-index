@@ -1,16 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useEffectEvent, useMemo, useState } from 'react'
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { startTransition, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { geoEqualEarth, geoGraticule10, geoMercator, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
@@ -29,14 +17,12 @@ const CHART_TICK_COLOR = '#000000'
 const CHART_GRID_COLOR = '#d4d4d4'
 const CHART_PRIMARY_COLOR = '#0000ee'
 const CHART_SECONDARY_COLOR = '#808080'
-const CHART_TOOLTIP_STYLE = {
-  background: '#ffffff',
-  border: '1px solid #999999',
-  borderRadius: '0',
-  color: '#000000',
-}
 const WORLD_FEATURE_COLLECTION = { type: 'FeatureCollection', features: worldGeographies }
 const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.png'
+const ARCHIVE_CHART_WIDTH = 960
+const ARCHIVE_CHART_HEIGHT = 320
+const ARCHIVE_DIVERGENCE_HEIGHT = 180
+const ARCHIVE_CHART_MARGIN = { top: 16, right: 18, bottom: 28, left: 44 }
 
 function formatCount(value) {
   return new Intl.NumberFormat().format(Math.round(value || 0))
@@ -197,43 +183,357 @@ function findLastIndexAtOrBefore(values, target) {
   return clamp(low - 1, 0, Math.max(0, values.length - 1))
 }
 
-function downsampleArchiveSeries(series, maxPoints = 960) {
-  if (series.length <= maxPoints) {
-    return series
+function findNearestTimestampIndex(values, target) {
+  if (!values.length) {
+    return -1
   }
 
-  const bucketCount = Math.max(1, Math.floor(maxPoints / 4))
-  const bucketSize = Math.ceil(series.length / bucketCount)
-  const selectedIndexes = new Set([0, series.length - 1])
+  const rightIndex = findFirstIndexAtOrAfter(values, target)
+  const leftIndex = clamp(rightIndex - 1, 0, values.length - 1)
+  const clampedRightIndex = clamp(rightIndex, 0, values.length - 1)
 
-  for (let bucketStart = 0; bucketStart < series.length; bucketStart += bucketSize) {
-    const bucketEnd = Math.min(series.length, bucketStart + bucketSize)
-    let maxConcurrentIndex = bucketStart
-    let maxPositiveDivergenceIndex = bucketStart
-    let maxNegativeDivergenceIndex = bucketStart
+  return Math.abs(values[leftIndex] - target) <= Math.abs(values[clampedRightIndex] - target)
+    ? leftIndex
+    : clampedRightIndex
+}
 
-    for (let index = bucketStart + 1; index < bucketEnd; index += 1) {
-      if ((series[index].concurrentCount ?? 0) > (series[maxConcurrentIndex].concurrentCount ?? 0)) {
-        maxConcurrentIndex = index
-      }
-      if ((series[index].divergence ?? 0) > (series[maxPositiveDivergenceIndex].divergence ?? 0)) {
-        maxPositiveDivergenceIndex = index
-      }
-      if ((series[index].divergence ?? 0) < (series[maxNegativeDivergenceIndex].divergence ?? 0)) {
-        maxNegativeDivergenceIndex = index
+function getNiceNumber(value, round) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 1
+  }
+
+  const exponent = Math.floor(Math.log10(value))
+  const fraction = value / 10 ** exponent
+  let niceFraction = 1
+
+  if (round) {
+    if (fraction < 1.5) {
+      niceFraction = 1
+    } else if (fraction < 3) {
+      niceFraction = 2
+    } else if (fraction < 7) {
+      niceFraction = 5
+    } else {
+      niceFraction = 10
+    }
+  } else if (fraction <= 1) {
+    niceFraction = 1
+  } else if (fraction <= 2) {
+    niceFraction = 2
+  } else if (fraction <= 5) {
+    niceFraction = 5
+  } else {
+    niceFraction = 10
+  }
+
+  return niceFraction * 10 ** exponent
+}
+
+function buildNumericTicks(minValue, maxValue, targetCount = 5) {
+  if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+    return [0, 1]
+  }
+
+  if (minValue === maxValue) {
+    const padding = Math.max(1, Math.abs(minValue) * 0.05)
+    return [minValue - padding, minValue, minValue + padding]
+  }
+
+  const span = maxValue - minValue
+  const step = getNiceNumber(span / Math.max(1, targetCount - 1), true)
+  const niceMin = Math.floor(minValue / step) * step
+  const niceMax = Math.ceil(maxValue / step) * step
+  const ticks = []
+
+  for (let value = niceMin; value <= niceMax + step * 0.5; value += step) {
+    ticks.push(Number(value.toFixed(8)))
+  }
+
+  return ticks
+}
+
+function buildTimeTicks(minTimestamp, maxTimestamp, tickCount = 5) {
+  if (!Number.isFinite(minTimestamp) || !Number.isFinite(maxTimestamp)) {
+    return []
+  }
+
+  if (minTimestamp === maxTimestamp) {
+    return [minTimestamp]
+  }
+
+  const ticks = []
+  const step = (maxTimestamp - minTimestamp) / Math.max(1, tickCount - 1)
+
+  for (let index = 0; index < tickCount; index += 1) {
+    ticks.push(minTimestamp + step * index)
+  }
+
+  return ticks
+}
+
+function buildSvgLinePath(data, xScale, yScale, accessor) {
+  let path = ''
+
+  for (let index = 0; index < data.length; index += 1) {
+    const value = accessor(data[index])
+    if (!Number.isFinite(value)) {
+      continue
+    }
+
+    const command = path ? 'L' : 'M'
+    path += `${command}${xScale(index).toFixed(2)},${yScale(value).toFixed(2)}`
+  }
+
+  return path
+}
+
+function buildSvgAreaPath(data, xScale, yScale, accessor, baselineValue) {
+  if (!data.length) {
+    return ''
+  }
+
+  let path = `M${xScale(0).toFixed(2)},${yScale(baselineValue).toFixed(2)}`
+
+  for (let index = 0; index < data.length; index += 1) {
+    const value = accessor(data[index])
+    if (!Number.isFinite(value)) {
+      continue
+    }
+
+    path += `L${xScale(index).toFixed(2)},${yScale(value).toFixed(2)}`
+  }
+
+  path += `L${xScale(data.length - 1).toFixed(2)},${yScale(baselineValue).toFixed(2)}Z`
+  return path
+}
+
+function ArchiveSvgChart({
+  data,
+  height,
+  windowDays,
+  yTickFormatter = (value) => String(value),
+  lines = [],
+  area = null,
+  showZeroLine = false,
+  tooltipFormatter,
+}) {
+  const [hoverIndex, setHoverIndex] = useState(null)
+
+  const chartState = useMemo(() => {
+    if (!data.length) {
+      return null
+    }
+
+    const width = ARCHIVE_CHART_WIDTH
+    const margin = ARCHIVE_CHART_MARGIN
+    const innerWidth = width - margin.left - margin.right
+    const innerHeight = height - margin.top - margin.bottom
+    const timestamps = data.map((sample) => Date.parse(sample.sampledAt || 0))
+    const xMin = timestamps[0]
+    const xMax = timestamps[timestamps.length - 1]
+    const allValues = []
+
+    for (const line of lines) {
+      for (const sample of data) {
+        const value = line.accessor(sample)
+        if (Number.isFinite(value)) {
+          allValues.push(value)
+        }
       }
     }
 
-    selectedIndexes.add(bucketStart)
-    selectedIndexes.add(bucketEnd - 1)
-    selectedIndexes.add(maxConcurrentIndex)
-    selectedIndexes.add(maxPositiveDivergenceIndex)
-    selectedIndexes.add(maxNegativeDivergenceIndex)
+    if (area) {
+      for (const sample of data) {
+        const value = area.accessor(sample)
+        if (Number.isFinite(value)) {
+          allValues.push(value)
+        }
+      }
+      allValues.push(area.baselineValue)
+    }
+
+    if (showZeroLine) {
+      allValues.push(0)
+    }
+
+    const minValue = Math.min(...allValues)
+    const maxValue = Math.max(...allValues)
+    const yTicks = buildNumericTicks(minValue, maxValue, 5)
+    const yMin = yTicks[0]
+    const yMax = yTicks[yTicks.length - 1]
+    const xTicks = buildTimeTicks(xMin, xMax, windowDays <= 3 ? 6 : 5)
+    const xScale = (index) => margin.left + ((timestamps[index] - xMin) / Math.max(1, xMax - xMin)) * innerWidth
+    const xScaleFromTimestamp = (timestamp) => margin.left + ((timestamp - xMin) / Math.max(1, xMax - xMin)) * innerWidth
+    const yScale = (value) => margin.top + innerHeight - ((value - yMin) / Math.max(1e-9, yMax - yMin)) * innerHeight
+
+    return {
+      width,
+      height,
+      margin,
+      innerWidth,
+      innerHeight,
+      timestamps,
+      xMin,
+      xMax,
+      yTicks,
+      xTicks,
+      xScale,
+      xScaleFromTimestamp,
+      yScale,
+      yMin,
+      yMax,
+    }
+  }, [area, data, height, lines, showZeroLine, windowDays])
+
+  if (!chartState) {
+    return null
   }
 
-  return Array.from(selectedIndexes)
-    .sort((left, right) => left - right)
-    .map((index) => series[index])
+  const hoverSample = hoverIndex != null ? data[hoverIndex] : null
+  const hoverX = hoverIndex != null ? chartState.xScale(hoverIndex) : null
+
+  return (
+    <div className="archive-chart-shell">
+      {hoverSample ? (
+        <div className="archive-chart-tooltip">
+          {tooltipFormatter(hoverSample)}
+        </div>
+      ) : null}
+      <svg
+        viewBox={`0 0 ${chartState.width} ${chartState.height}`}
+        className="archive-chart-svg"
+        role="img"
+        aria-label="Historical aircraft activity chart"
+        onMouseLeave={() => setHoverIndex(null)}
+        onTouchEnd={() => setHoverIndex(null)}
+        onMouseMove={(event) => {
+          const bounds = event.currentTarget.getBoundingClientRect()
+          const relativeX = ((event.clientX - bounds.left) / bounds.width) * chartState.width
+          const timestamp =
+            chartState.xMin +
+            ((relativeX - chartState.margin.left) / Math.max(1, chartState.innerWidth)) * (chartState.xMax - chartState.xMin)
+          setHoverIndex(findNearestTimestampIndex(chartState.timestamps, timestamp))
+        }}
+        onTouchMove={(event) => {
+          const touch = event.touches[0]
+          if (!touch) {
+            return
+          }
+
+          const bounds = event.currentTarget.getBoundingClientRect()
+          const relativeX = ((touch.clientX - bounds.left) / bounds.width) * chartState.width
+          const timestamp =
+            chartState.xMin +
+            ((relativeX - chartState.margin.left) / Math.max(1, chartState.innerWidth)) * (chartState.xMax - chartState.xMin)
+          setHoverIndex(findNearestTimestampIndex(chartState.timestamps, timestamp))
+        }}
+      >
+        {chartState.yTicks.map((tick) => (
+          <g key={`y-${tick}`}>
+            <line
+              x1={chartState.margin.left}
+              x2={chartState.width - chartState.margin.right}
+              y1={chartState.yScale(tick)}
+              y2={chartState.yScale(tick)}
+              stroke={CHART_GRID_COLOR}
+              strokeDasharray="2 2"
+            />
+            <text
+              x={chartState.margin.left - 8}
+              y={chartState.yScale(tick)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fill={CHART_TICK_COLOR}
+              fontSize="12"
+            >
+              {yTickFormatter(tick)}
+            </text>
+          </g>
+        ))}
+        {chartState.xTicks.map((tick) => (
+          <g key={`x-${tick}`}>
+            <text
+              x={chartState.xScaleFromTimestamp(tick)}
+              y={chartState.height - 6}
+              textAnchor="middle"
+              fill={CHART_TICK_COLOR}
+              fontSize="12"
+            >
+              {formatArchiveTick(tick, windowDays)}
+            </text>
+          </g>
+        ))}
+        {showZeroLine ? (
+          <line
+            x1={chartState.margin.left}
+            x2={chartState.width - chartState.margin.right}
+            y1={chartState.yScale(0)}
+            y2={chartState.yScale(0)}
+            stroke="#999999"
+            strokeDasharray="5 5"
+          />
+        ) : null}
+        {area ? (
+          <path
+            d={buildSvgAreaPath(data, chartState.xScale, chartState.yScale, area.accessor, area.baselineValue)}
+            fill={area.fill}
+            stroke="none"
+          />
+        ) : null}
+        {lines.map((line) => (
+          <path
+            key={line.name}
+            d={buildSvgLinePath(data, chartState.xScale, chartState.yScale, line.accessor)}
+            fill="none"
+            stroke={line.stroke}
+            strokeWidth={line.strokeWidth}
+            strokeDasharray={line.strokeDasharray}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {hoverSample && hoverX != null ? (
+          <g>
+            <line
+              x1={hoverX}
+              x2={hoverX}
+              y1={chartState.margin.top}
+              y2={chartState.height - chartState.margin.bottom}
+              stroke="#666666"
+              strokeDasharray="4 4"
+            />
+            {lines.map((line) => {
+              const value = line.accessor(hoverSample)
+              if (!Number.isFinite(value)) {
+                return null
+              }
+
+              return (
+                <circle
+                  key={`hover-${line.name}`}
+                  cx={hoverX}
+                  cy={chartState.yScale(value)}
+                  r="3.5"
+                  fill={line.stroke}
+                  stroke="#ffffff"
+                  strokeWidth="1"
+                />
+              )
+            })}
+            {area ? (
+              <circle
+                cx={hoverX}
+                cy={chartState.yScale(area.accessor(hoverSample))}
+                r="3.5"
+                fill={area.stroke}
+                stroke="#ffffff"
+                strokeWidth="1"
+              />
+            ) : null}
+          </g>
+        ) : null}
+      </svg>
+    </div>
+  )
 }
 
 function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
@@ -358,26 +658,23 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
     })
   }
 
-  const deferredStartDaysAgo = useDeferredValue(clampedRangeDaysAgo.startDaysAgo)
-  const deferredEndDaysAgo = useDeferredValue(clampedRangeDaysAgo.endDaysAgo)
   const visibleWindowDays = Math.max(1, clampedRangeDaysAgo.startDaysAgo - clampedRangeDaysAgo.endDaysAgo)
   const pastHandlePercent = ((maxDaysAvailable - clampedRangeDaysAgo.startDaysAgo) / maxDaysAvailable) * 100
   const nowHandlePercent = ((maxDaysAvailable - clampedRangeDaysAgo.endDaysAgo) / maxDaysAvailable) * 100
 
   const { visibleData, visibleStart, visibleEnd } = useMemo(() => {
-    const lowerBound = latestTimestamp - deferredStartDaysAgo * ARCHIVE_DAY_MS
-    const upperBound = latestTimestamp - deferredEndDaysAgo * ARCHIVE_DAY_MS
+    const lowerBound = latestTimestamp - clampedRangeDaysAgo.startDaysAgo * ARCHIVE_DAY_MS
+    const upperBound = latestTimestamp - clampedRangeDaysAgo.endDaysAgo * ARCHIVE_DAY_MS
     const startIndex = findFirstIndexAtOrAfter(sampledAtTimestamps, lowerBound)
     const endIndex = findLastIndexAtOrBefore(sampledAtTimestamps, upperBound)
     const slicedData = startIndex <= endIndex ? data.slice(startIndex, endIndex + 1) : []
-    const downsampledData = downsampleArchiveSeries(slicedData)
 
     return {
-      visibleData: downsampledData,
+      visibleData: slicedData,
       visibleStart: slicedData[0]?.sampledAt,
       visibleEnd: slicedData[slicedData.length - 1]?.sampledAt,
     }
-  }, [data, deferredEndDaysAgo, deferredStartDaysAgo, latestTimestamp, sampledAtTimestamps])
+  }, [clampedRangeDaysAgo.endDaysAgo, clampedRangeDaysAgo.startDaysAgo, data, latestTimestamp, sampledAtTimestamps])
 
   if (!hasData) {
     return (
@@ -402,7 +699,7 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
           </strong>
         </div>
       </div>
-      <div className="chart-toolbar chart-toolbar-archive">
+      <div className="chart-range-toolbar">
         <div className="chart-range-slider">
           <div className="chart-range-slider-copy">
             <span>Past</span>
@@ -449,6 +746,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             />
           </div>
         </div>
+      </div>
+      <div className="chart-toolbar chart-toolbar-archive">
         <fieldset className="chart-radio-group">
           <legend className="sr-only">Historical archive window</legend>
           <label className="chart-radio-option">
@@ -490,52 +789,33 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
         </fieldset>
       </div>
       <div className="chart-frame">
-        <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={visibleData} margin={{ top: 14, right: 18, left: -14, bottom: 0 }}>
-            <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
-            <XAxis
-              dataKey="sampledAt"
-              tickFormatter={(value) => formatArchiveTick(value, visibleWindowDays)}
-              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
-              axisLine={false}
-              tickLine={false}
-              minTickGap={24}
-            />
-            <YAxis
-              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
-              axisLine={false}
-              tickLine={false}
-              width={34}
-              allowDecimals={false}
-            />
-            <Tooltip
-              contentStyle={CHART_TOOLTIP_STYLE}
-              allowEscapeViewBox={{ x: false, y: true }}
-              wrapperStyle={{ zIndex: 6 }}
-              labelFormatter={(value) => formatTimestamp(value)}
-              formatter={(value, name) => [formatCount(value), name]}
-            />
-            <Line
-              type="linear"
-              dataKey="concurrentCount"
-              stroke={CHART_PRIMARY_COLOR}
-              strokeWidth={2.5}
-              dot={false}
-              name="Observed concurrent"
-              isAnimationActive={false}
-            />
-            <Line
-              type="linear"
-              dataKey="predictedConcurrentCount"
-              stroke={CHART_SECONDARY_COLOR}
-              strokeWidth={2}
-              strokeDasharray="7 6"
-              dot={false}
-              name="Predicted concurrent"
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        <ArchiveSvgChart
+          data={visibleData}
+          height={ARCHIVE_CHART_HEIGHT}
+          windowDays={visibleWindowDays}
+          lines={[
+            {
+              name: 'Observed concurrent',
+              accessor: (sample) => sample.concurrentCount,
+              stroke: CHART_PRIMARY_COLOR,
+              strokeWidth: 2.5,
+            },
+            {
+              name: 'Predicted concurrent',
+              accessor: (sample) => sample.predictedConcurrentCount,
+              stroke: CHART_SECONDARY_COLOR,
+              strokeWidth: 2,
+              strokeDasharray: '7 6',
+            },
+          ]}
+          tooltipFormatter={(sample) => (
+            <>
+              <strong>{formatTimestamp(sample.sampledAt)}</strong>
+              <span>Observed: {formatCount(sample.concurrentCount)}</span>
+              <span>Predicted: {formatCount(sample.predictedConcurrentCount)}</span>
+            </>
+          )}
+        />
       </div>
       <div className="chart-subsection">
         <div className="chart-subsection-header">
@@ -543,49 +823,33 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
           <span>Positive values indicate more aircraft airborne than predicted for that half-hour slot.</span>
         </div>
         <div className="chart-frame chart-frame-secondary">
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={visibleData} margin={{ top: 8, right: 18, left: -6, bottom: 0 }}>
-              <defs>
-                <linearGradient id="archiveDivergenceFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.18" />
-                  <stop offset="100%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.02" />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
-              <XAxis
-                dataKey="sampledAt"
-                tickFormatter={(value) => formatArchiveTick(value, visibleWindowDays)}
-                tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
-                axisLine={false}
-                tickLine={false}
-                minTickGap={24}
-              />
-              <YAxis
-                tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
-                tickFormatter={formatDelta}
-                axisLine={false}
-                tickLine={false}
-                width={42}
-              />
-              <Tooltip
-                contentStyle={CHART_TOOLTIP_STYLE}
-                allowEscapeViewBox={{ x: false, y: true }}
-                wrapperStyle={{ zIndex: 6 }}
-                labelFormatter={(value) => formatTimestamp(value)}
-                formatter={(value) => [formatDelta(value), 'Difference']}
-              />
-              <ReferenceLine y={0} stroke="#999999" strokeDasharray="5 5" />
-              <Area
-                type="linear"
-                dataKey="divergence"
-                stroke={CHART_PRIMARY_COLOR}
-                strokeWidth={2}
-                fill="url(#archiveDivergenceFill)"
-                name="Difference"
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <ArchiveSvgChart
+            data={visibleData}
+            height={ARCHIVE_DIVERGENCE_HEIGHT}
+            windowDays={visibleWindowDays}
+            yTickFormatter={formatDelta}
+            showZeroLine
+            area={{
+              accessor: (sample) => sample.divergence,
+              baselineValue: 0,
+              fill: 'rgba(0, 0, 238, 0.14)',
+              stroke: CHART_PRIMARY_COLOR,
+            }}
+            lines={[
+              {
+                name: 'Difference',
+                accessor: (sample) => sample.divergence,
+                stroke: CHART_PRIMARY_COLOR,
+                strokeWidth: 2,
+              },
+            ]}
+            tooltipFormatter={(sample) => (
+              <>
+                <strong>{formatTimestamp(sample.sampledAt)}</strong>
+                <span>Difference: {formatDelta(sample.divergence)}</span>
+              </>
+            )}
+          />
         </div>
       </div>
     </section>

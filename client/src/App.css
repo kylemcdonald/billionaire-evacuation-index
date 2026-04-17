@@ -335,10 +335,15 @@
   margin: 0;
 }
 
+.chart-range-toolbar {
+  width: 100%;
+  margin-top: 12px;
+}
+
 .chart-toolbar-archive {
   display: grid;
   gap: 10px;
-  align-items: stretch;
+  align-items: flex-start;
 }
 
 .chart-slider-label {
@@ -430,6 +435,31 @@
 .chart-frame-secondary,
 .chart-summary-section {
   margin-top: 12px;
+}
+
+.archive-chart-shell {
+  position: relative;
+}
+
+.archive-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.archive-chart-tooltip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  gap: 2px;
+  max-width: min(260px, calc(100% - 20px));
+  padding: 8px 10px;
+  border: 1px solid #999999;
+  background: #ffffff;
+  color: #000000;
+  font-size: 0.85rem;
 }
 
 .chart-summary-stack {
