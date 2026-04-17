@@ -368,6 +368,22 @@ function getRecentDailyMetrics(limit = 365) {
     .reverse();
 }
 
+function getAllDailyMetrics() {
+  const db = getDb();
+  return db
+    .prepare(`
+      SELECT
+        day,
+        unique_airborne_count AS uniqueAirborneCount,
+        peak_concurrent_count AS peakConcurrentCount,
+        peak_rolling_24h_count AS peakRolling24hCount,
+        sample_count AS sampleCount
+      FROM daily_metrics
+      ORDER BY day ASC
+    `)
+    .all();
+}
+
 function getRecentRollingMetrics(limit = 120) {
   const db = getDb();
   return db
@@ -382,6 +398,20 @@ function getRecentRollingMetrics(limit = 120) {
     `)
     .all(limit)
     .reverse();
+}
+
+function getAllRollingMetrics() {
+  const db = getDb();
+  return db
+    .prepare(`
+      SELECT
+        sampled_at AS sampledAt,
+        rolling_24h_count AS rolling24hCount,
+        concurrent_count AS concurrentCount
+      FROM rolling_metrics
+      ORDER BY sampled_at ASC
+    `)
+    .all();
 }
 
 function getTrackedAircraftCount() {
@@ -461,7 +491,9 @@ module.exports = {
   getCurrentRollingCount,
   getConcurrentCount,
   getLiveAircraft,
+  getAllDailyMetrics,
   getRecentDailyMetrics,
+  getAllRollingMetrics,
   getRecentRollingMetrics,
   getTrackedAircraftCount,
   getTrackingSummary,

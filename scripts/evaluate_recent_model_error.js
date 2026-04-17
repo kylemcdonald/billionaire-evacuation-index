@@ -1,9 +1,12 @@
 const {
   initDb,
   getDb,
-  getBaselineStats,
+  getAllRollingMetrics,
 } = require("../server/db");
-const { computeConcurrentPredictionModel } = require("../server/dashboard");
+const {
+  buildConcurrentPredictionContext,
+  computeConcurrentPredictionModel,
+} = require("../server/dashboard");
 
 function computeMedian(sortedValues) {
   if (!sortedValues.length) {
@@ -18,7 +21,7 @@ function computeMedian(sortedValues) {
 
 initDb();
 const db = getDb();
-const globalBaseline = getBaselineStats();
+const concurrentContext = buildConcurrentPredictionContext(getAllRollingMetrics());
 const rows = db
   .prepare(`
     SELECT sampled_at AS sampledAt, rolling_24h_count AS rolling24hCount, concurrent_count AS concurrentCount
@@ -30,9 +33,12 @@ const rows = db
 
 const evaluations = rows
   .map((row) => {
-    const currentRolling24hCount = Number(row.rolling24hCount || 0);
     const predicted = Number(
-      computeConcurrentPredictionModel(row.sampledAt, currentRolling24hCount, Number(row.concurrentCount || 0), globalBaseline)
+      computeConcurrentPredictionModel(
+        row.sampledAt,
+        Number(row.concurrentCount || 0),
+        concurrentContext,
+      )
         .expectedConcurrentCount,
     );
     if (!Number.isFinite(predicted)) {

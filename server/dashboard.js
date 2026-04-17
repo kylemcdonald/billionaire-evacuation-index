@@ -1,14 +1,8 @@
 const {
   getMetaValue,
-  getBaselineStats,
-  getRecentWeekdayBaselineStats,
-  getRecentTimeOfDayBaseline,
-  getRollingMetricNear,
-  getCurrentRollingCount,
   getConcurrentCount,
   getLiveAircraft,
-  getRecentDailyMetrics,
-  getRecentRollingMetrics,
+  getAllRollingMetrics,
   getTrackedAircraftCount,
   getTrackingSummary,
   areAllTrackedAircraftDemo,
@@ -17,83 +11,26 @@ const { getDemoDashboard } = require("./demo-data");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HALF_HOUR_MS = 30 * 60 * 1000;
+const MATCH_WINDOW_MS = 20 * 60 * 1000;
 const HEATMAP_SOURCE = "adsbx_heatmap";
 const HEATMAP_STATUS_META_KEY = "adsbx_heatmap_status";
 const META_SLOT_KEY = "adsbx_heatmap_slot_key";
 const META_SAMPLED_AT = "adsbx_heatmap_sampled_at";
 const META_URL = "adsbx_heatmap_url";
 const META_CACHE_PATH = "adsbx_heatmap_cache_path";
-const ELEVATED_SIGMA_THRESHOLD = 1.5;
-const ALARM_SIGMA_THRESHOLD = 8.0;
-const DIAL_HOT_START_RATIO = 0.75;
-const DIAL_SIGMA_EXTENT = ALARM_SIGMA_THRESHOLD / DIAL_HOT_START_RATIO;
-const INTRADAY_SMOOTHING_WINDOW = [
-  { offsetMinutes: -60, weight: 1 },
-  { offsetMinutes: -30, weight: 2 },
-  { offsetMinutes: 0, weight: 3 },
-  { offsetMinutes: 30, weight: 2 },
-  { offsetMinutes: 60, weight: 1 },
-];
 
-function computeAlertLevel(sigmaShift) {
-  if (sigmaShift >= ALARM_SIGMA_THRESHOLD) {
-    return "alarm";
-  }
+const CONCURRENT_LOOKBACK_DAYS = 28;
+const CONCURRENT_SLOT_HALF_LIFE_DAYS = 2;
+const CONCURRENT_WEEKDAY_SLOT_HALF_LIFE_DAYS = 3;
+const CONCURRENT_SLOT_NEIGHBOR_WEIGHT = 1;
+const CONCURRENT_WEEKDAY_SLOT_NEIGHBOR_WEIGHT = 1;
+const CONCURRENT_WEEKDAY_SHRINKAGE = 2;
+const CONCURRENT_MIN_HISTORY_SAMPLES = 7 * 48;
+const CONCURRENT_MIN_STD_DEV = 8;
+const MIN_ALARM_SIGMA_THRESHOLD = 4;
+const DEFAULT_ALARM_SIGMA_THRESHOLD = 7;
 
-  if (sigmaShift >= ELEVATED_SIGMA_THRESHOLD) {
-    return "elevated";
-  }
-
-  return "normal";
-}
-
-function computeGaugeValue(sigmaShift) {
-  const clampedShift = Math.max(0, Math.min(DIAL_SIGMA_EXTENT, sigmaShift));
-  return Math.max(0, Math.min(1, clampedShift / DIAL_SIGMA_EXTENT));
-}
-
-function computeBaselineSignal(currentValue, baselineMean, baselineStdDev) {
-  if (!baselineStdDev) {
-    return {
-      sigmaShift: 0,
-      gaugeValue: 0,
-      alertLevel: "normal",
-    };
-  }
-
-  const sigmaShift = (currentValue - baselineMean) / baselineStdDev;
-  return {
-    sigmaShift,
-    gaugeValue: computeGaugeValue(sigmaShift),
-    alertLevel: computeAlertLevel(sigmaShift),
-  };
-}
-
-function computeReferenceSignal(currentValue, referenceValue, normalizationStdDev) {
-  if (!Number.isFinite(referenceValue)) {
-    return {
-      deltaCount: null,
-      percentChange: null,
-      sigmaShift: 0,
-      gaugeValue: 0,
-      alertLevel: "normal",
-    };
-  }
-
-  const deltaCount = currentValue - referenceValue;
-  const percentChange = referenceValue ? deltaCount / referenceValue : null;
-  const sigmaShift = normalizationStdDev ? deltaCount / normalizationStdDev : 0;
-
-  return {
-    deltaCount,
-    percentChange,
-    sigmaShift,
-    gaugeValue: computeGaugeValue(sigmaShift),
-    alertLevel: computeAlertLevel(sigmaShift),
-  };
-}
-
-function average(values) {
+function mean(values) {
   const finiteValues = values.filter((value) => Number.isFinite(value));
   if (!finiteValues.length) {
     return null;
@@ -102,8 +39,70 @@ function average(values) {
   return finiteValues.reduce((total, value) => total + value, 0) / finiteValues.length;
 }
 
-function shiftIsoByMinutes(referenceIso, minutes) {
-  return new Date(new Date(referenceIso).getTime() + minutes * 60 * 1000).toISOString();
+function weightedMean(components) {
+  const activeComponents = components.filter(
+    (component) => component.weight > 0 && Number.isFinite(component.value),
+  );
+  if (!activeComponents.length) {
+    return null;
+  }
+
+  const totalWeight = activeComponents.reduce((total, component) => total + component.weight, 0);
+  return activeComponents.reduce((total, component) => total + component.weight * component.value, 0) / totalWeight;
+}
+
+function computeAlertLevel(sigmaShift, alarmSigmaThreshold) {
+  const elevatedSigmaThreshold = Math.max(1.5, alarmSigmaThreshold / 2);
+  if (sigmaShift >= alarmSigmaThreshold) {
+    return "alarm";
+  }
+
+  if (sigmaShift >= elevatedSigmaThreshold) {
+    return "elevated";
+  }
+
+  return "normal";
+}
+
+function computeGaugeValue(sigmaShift, alarmSigmaThreshold) {
+  if (!alarmSigmaThreshold) {
+    return 0;
+  }
+
+  const clampedShift = Math.max(0, Math.min(alarmSigmaThreshold, sigmaShift));
+  return Math.max(0, Math.min(1, clampedShift / alarmSigmaThreshold));
+}
+
+function computeEmergencyLevel(sigmaShift, alarmSigmaThreshold) {
+  const normalizedSigma = Math.max(0, Number(sigmaShift || 0));
+  if (!alarmSigmaThreshold) {
+    return 1;
+  }
+
+  if (normalizedSigma >= alarmSigmaThreshold) {
+    return 5;
+  }
+
+  return Math.min(4, Math.max(1, Math.floor((normalizedSigma / alarmSigmaThreshold) * 4) + 1));
+}
+
+function computeBaselineSignal(currentValue, baselineMean, baselineStdDev, alarmSigmaThreshold) {
+  if (!baselineStdDev) {
+    return {
+      sigmaShift: 0,
+      gaugeValue: 0,
+      alertLevel: "normal",
+      emergencyLevel: 1,
+    };
+  }
+
+  const sigmaShift = (currentValue - baselineMean) / baselineStdDev;
+  return {
+    sigmaShift,
+    gaugeValue: computeGaugeValue(sigmaShift, alarmSigmaThreshold),
+    alertLevel: computeAlertLevel(sigmaShift, alarmSigmaThreshold),
+    emergencyLevel: computeEmergencyLevel(sigmaShift, alarmSigmaThreshold),
+  };
 }
 
 function roundIsoToNearestHalfHour(referenceIso) {
@@ -115,73 +114,418 @@ function roundIsoToNearestHalfHour(referenceIso) {
   return new Date(Math.round(timestamp / HALF_HOUR_MS) * HALF_HOUR_MS).toISOString();
 }
 
-function combineWeightedStats(parts, valueKey, deviationKey) {
-  const activeParts = parts.filter((part) => part.weight > 0 && part.baseline?.sampleCount);
-  if (!activeParts.length) {
-    return {
-      mean: 0,
-      standardDeviation: 0,
-      totalWeight: 0,
-    };
+function normalizeSlot(slot) {
+  return (slot + 48) % 48;
+}
+
+function getSlotFromIso(referenceIso) {
+  const date = new Date(referenceIso);
+  return date.getUTCHours() * 2 + (date.getUTCMinutes() >= 30 ? 1 : 0);
+}
+
+function getWeekdayFromIso(referenceIso) {
+  return new Date(referenceIso).getUTCDay();
+}
+
+function getNeighborSlots(slot) {
+  return [normalizeSlot(slot - 1), normalizeSlot(slot), normalizeSlot(slot + 1)];
+}
+
+function trimHistoryQueue(queue, cutoffTimestampMs) {
+  while (queue.length && queue[0].timestampMs < cutoffTimestampMs) {
+    queue.shift();
+  }
+}
+
+function computeDecayedMean(entries, referenceTimestampMs, halfLifeDays, valueKey) {
+  if (!entries.length) {
+    return null;
   }
 
-  const totalWeight = activeParts.reduce((total, part) => total + part.weight, 0);
-  const mean =
-    activeParts.reduce((total, part) => total + part.weight * Number(part.baseline?.[valueKey] ?? 0), 0) / totalWeight;
-  const meanSquare =
-    activeParts.reduce((total, part) => {
-      const baselineMean = Number(part.baseline?.[valueKey] ?? 0);
-      const baselineDeviation = Number(part.baseline?.[deviationKey] ?? 0);
-      return total + part.weight * (baselineDeviation * baselineDeviation + baselineMean * baselineMean);
-    }, 0) / totalWeight;
+  const lambda = Math.log(2) / Math.max(0.01, halfLifeDays);
+  let totalWeight = 0;
+  let weightedSum = 0;
+
+  for (const entry of entries) {
+    const value = Number(entry[valueKey]);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+
+    const ageDays = Math.max(0, (referenceTimestampMs - entry.timestampMs) / DAY_MS);
+    const weight = Math.exp(-lambda * ageDays);
+    totalWeight += weight;
+    weightedSum += weight * value;
+  }
+
+  return totalWeight ? weightedSum / totalWeight : null;
+}
+
+function computeDecayedRootMeanSquare(entries, referenceTimestampMs, halfLifeDays, valueKey) {
+  if (!entries.length) {
+    return null;
+  }
+
+  const lambda = Math.log(2) / Math.max(0.01, halfLifeDays);
+  let totalWeight = 0;
+  let weightedSquareSum = 0;
+
+  for (const entry of entries) {
+    const value = Number(entry[valueKey]);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+
+    const ageDays = Math.max(0, (referenceTimestampMs - entry.timestampMs) / DAY_MS);
+    const weight = Math.exp(-lambda * ageDays);
+    totalWeight += weight;
+    weightedSquareSum += weight * value * value;
+  }
+
+  return totalWeight ? Math.sqrt(weightedSquareSum / totalWeight) : null;
+}
+
+function buildNeighborhoodValue(entriesBySlot, referenceTimestampMs, halfLifeDays, neighborWeight, valueKey) {
+  const [previousEntries, currentEntries, nextEntries] = entriesBySlot;
+  const value = weightedMean([
+    {
+      weight: neighborWeight,
+      value: computeDecayedMean(previousEntries, referenceTimestampMs, halfLifeDays, valueKey),
+    },
+    {
+      weight: 1,
+      value: computeDecayedMean(currentEntries, referenceTimestampMs, halfLifeDays, valueKey),
+    },
+    {
+      weight: neighborWeight,
+      value: computeDecayedMean(nextEntries, referenceTimestampMs, halfLifeDays, valueKey),
+    },
+  ]);
+
+  const exactSampleCount = currentEntries.length;
+  const effectiveSampleCount =
+    currentEntries.length + neighborWeight * (previousEntries.length + nextEntries.length);
 
   return {
-    mean,
-    standardDeviation: Math.sqrt(Math.max(0, meanSquare - mean * mean)),
-    totalWeight,
+    value,
+    exactSampleCount,
+    effectiveSampleCount,
   };
 }
 
-function getSmoothedTimeOfDayBaseline(referenceIso, days = 7) {
+function buildNeighborhoodScale(entriesBySlot, referenceTimestampMs, halfLifeDays, neighborWeight, valueKey) {
+  return weightedMean([
+    {
+      weight: neighborWeight,
+      value: computeDecayedRootMeanSquare(entriesBySlot[0], referenceTimestampMs, halfLifeDays, valueKey),
+    },
+    {
+      weight: 1,
+      value: computeDecayedRootMeanSquare(entriesBySlot[1], referenceTimestampMs, halfLifeDays, valueKey),
+    },
+    {
+      weight: neighborWeight,
+      value: computeDecayedRootMeanSquare(entriesBySlot[2], referenceTimestampMs, halfLifeDays, valueKey),
+    },
+  ]);
+}
+
+function trimRelevantHistories(state, weekday, slot, cutoffTimestampMs) {
+  for (const neighborSlot of getNeighborSlots(slot)) {
+    trimHistoryQueue(state.slotHistory[neighborSlot], cutoffTimestampMs);
+    trimHistoryQueue(state.slotResidualHistory[neighborSlot], cutoffTimestampMs);
+    trimHistoryQueue(state.weekdaySlotHistory[weekday][neighborSlot], cutoffTimestampMs);
+    trimHistoryQueue(state.weekdaySlotResidualHistory[weekday][neighborSlot], cutoffTimestampMs);
+  }
+}
+
+function buildConcurrentPredictionFromState(referenceIso, concurrentCount, state) {
   const canonicalReferenceIso = roundIsoToNearestHalfHour(referenceIso);
-  const windowParts = INTRADAY_SMOOTHING_WINDOW.map(({ offsetMinutes, weight }) => ({
-    offsetMinutes,
-    weight,
-    baseline: getRecentTimeOfDayBaseline(shiftIsoByMinutes(canonicalReferenceIso, offsetMinutes), days),
-  }));
-  const centerPart = windowParts.find((part) => part.offsetMinutes === 0)?.baseline ?? {
-    sampleCount: 0,
-    samples: [],
-  };
-  const concurrentStats = combineWeightedStats(
-    windowParts,
-    "concurrentMean",
-    "concurrentStandardDeviation",
+  const referenceTimestampMs = Date.parse(canonicalReferenceIso);
+  if (!Number.isFinite(referenceTimestampMs)) {
+    return {
+      canonicalReferenceIso,
+      modelReady: false,
+      expectedConcurrentCount: Number(concurrentCount || 0),
+      expectedConcurrentStdDev: CONCURRENT_MIN_STD_DEV,
+      timeOfDayExpected: null,
+      timeOfWeekExpected: null,
+      timeOfDaySampleCount: 0,
+      timeOfWeekSampleCount: 0,
+      timeOfWeekBlendWeight: 0,
+      sigmaShift: 0,
+      divergence: 0,
+    };
+  }
+
+  const slot = getSlotFromIso(canonicalReferenceIso);
+  const weekday = getWeekdayFromIso(canonicalReferenceIso);
+  const cutoffTimestampMs = referenceTimestampMs - CONCURRENT_LOOKBACK_DAYS * DAY_MS;
+  trimRelevantHistories(state, weekday, slot, cutoffTimestampMs);
+
+  const neighborSlots = getNeighborSlots(slot);
+  const slotCountHistories = neighborSlots.map((neighborSlot) => state.slotHistory[neighborSlot]);
+  const weekdaySlotCountHistories = neighborSlots.map(
+    (neighborSlot) => state.weekdaySlotHistory[weekday][neighborSlot],
   );
-  const rollingStats = combineWeightedStats(windowParts, "rollingMean", "rollingStandardDeviation");
-  const ratioStats = combineWeightedStats(windowParts, "ratioMean", "ratioStandardDeviation");
+  const slotResidualHistories = neighborSlots.map((neighborSlot) => state.slotResidualHistory[neighborSlot]);
+  const weekdaySlotResidualHistories = neighborSlots.map(
+    (neighborSlot) => state.weekdaySlotResidualHistory[weekday][neighborSlot],
+  );
+
+  const timeOfDayComponent = buildNeighborhoodValue(
+    slotCountHistories,
+    referenceTimestampMs,
+    CONCURRENT_SLOT_HALF_LIFE_DAYS,
+    CONCURRENT_SLOT_NEIGHBOR_WEIGHT,
+    "count",
+  );
+  const timeOfWeekComponent = buildNeighborhoodValue(
+    weekdaySlotCountHistories,
+    referenceTimestampMs,
+    CONCURRENT_WEEKDAY_SLOT_HALF_LIFE_DAYS,
+    CONCURRENT_WEEKDAY_SLOT_NEIGHBOR_WEIGHT,
+    "count",
+  );
+
+  const timeOfDayResidualScale =
+    buildNeighborhoodScale(
+      slotResidualHistories,
+      referenceTimestampMs,
+      CONCURRENT_SLOT_HALF_LIFE_DAYS,
+      CONCURRENT_SLOT_NEIGHBOR_WEIGHT,
+      "residual",
+    ) ??
+    buildNeighborhoodScale(
+      slotCountHistories,
+      referenceTimestampMs,
+      CONCURRENT_SLOT_HALF_LIFE_DAYS,
+      CONCURRENT_SLOT_NEIGHBOR_WEIGHT,
+      "count",
+    );
+  const timeOfWeekResidualScale =
+    buildNeighborhoodScale(
+      weekdaySlotResidualHistories,
+      referenceTimestampMs,
+      CONCURRENT_WEEKDAY_SLOT_HALF_LIFE_DAYS,
+      CONCURRENT_WEEKDAY_SLOT_NEIGHBOR_WEIGHT,
+      "residual",
+    ) ??
+    buildNeighborhoodScale(
+      weekdaySlotCountHistories,
+      referenceTimestampMs,
+      CONCURRENT_WEEKDAY_SLOT_HALF_LIFE_DAYS,
+      CONCURRENT_WEEKDAY_SLOT_NEIGHBOR_WEIGHT,
+      "count",
+    );
+
+  const timeOfWeekBlendWeight = Math.max(
+    0,
+    Math.min(
+      1,
+      timeOfWeekComponent.effectiveSampleCount /
+        (timeOfWeekComponent.effectiveSampleCount + CONCURRENT_WEEKDAY_SHRINKAGE),
+    ),
+  );
+  const expectedConcurrentCount =
+    weightedMean([
+      { weight: 1 - timeOfWeekBlendWeight, value: timeOfDayComponent.value },
+      { weight: timeOfWeekBlendWeight, value: timeOfWeekComponent.value },
+    ]) ?? Number(concurrentCount || 0);
+  const expectedConcurrentStdDev = Math.max(
+    CONCURRENT_MIN_STD_DEV,
+    weightedMean([
+      { weight: 1 - timeOfWeekBlendWeight, value: timeOfDayResidualScale },
+      { weight: timeOfWeekBlendWeight, value: timeOfWeekResidualScale },
+    ]) ?? CONCURRENT_MIN_STD_DEV,
+  );
+  const modelReady =
+    state.historySampleCount >= CONCURRENT_MIN_HISTORY_SAMPLES &&
+    (Number.isFinite(timeOfDayComponent.value) || Number.isFinite(timeOfWeekComponent.value));
+  const divergence = modelReady ? Number(concurrentCount || 0) - expectedConcurrentCount : 0;
+  const sigmaShift = modelReady ? divergence / expectedConcurrentStdDev : 0;
 
   return {
-    referenceIso: canonicalReferenceIso,
-    sampleCount: centerPart.sampleCount ?? 0,
-    samples: centerPart.samples ?? [],
-    smoothedWindowMinutes: Math.max(...INTRADAY_SMOOTHING_WINDOW.map((part) => Math.abs(part.offsetMinutes))),
-    concurrentMean: concurrentStats.mean,
-    concurrentStandardDeviation: concurrentStats.standardDeviation,
-    rollingMean: rollingStats.mean,
-    rollingStandardDeviation: rollingStats.standardDeviation,
-    ratioMean: ratioStats.mean,
-    ratioStandardDeviation: ratioStats.standardDeviation,
-    componentBaselines: windowParts.map((part) => ({
-      offsetMinutes: part.offsetMinutes,
-      sampleCount: part.baseline?.sampleCount ?? 0,
-      concurrentMean: part.baseline?.concurrentMean ?? 0,
-      concurrentStandardDeviation: part.baseline?.concurrentStandardDeviation ?? 0,
-      rollingMean: part.baseline?.rollingMean ?? 0,
-      rollingStandardDeviation: part.baseline?.rollingStandardDeviation ?? 0,
-      ratioMean: part.baseline?.ratioMean ?? 0,
-      ratioStandardDeviation: part.baseline?.ratioStandardDeviation ?? 0,
-    })),
+    canonicalReferenceIso,
+    modelReady,
+    slot,
+    weekday,
+    timeOfDayExpected: timeOfDayComponent.value,
+    timeOfWeekExpected: timeOfWeekComponent.value,
+    timeOfDayResidualScale,
+    timeOfWeekResidualScale,
+    timeOfDaySampleCount: timeOfDayComponent.exactSampleCount,
+    timeOfWeekSampleCount: timeOfWeekComponent.exactSampleCount,
+    timeOfWeekBlendWeight,
+    expectedConcurrentCount: modelReady ? expectedConcurrentCount : Number(concurrentCount || 0),
+    expectedConcurrentStdDev: modelReady ? expectedConcurrentStdDev : CONCURRENT_MIN_STD_DEV,
+    sigmaShift,
+    divergence,
+  };
+}
+
+function calibrateConcurrentAlarmThreshold(records) {
+  if (!records.length) {
+    return DEFAULT_ALARM_SIGMA_THRESHOLD;
+  }
+
+  const latestTimestamp = Date.parse(records[records.length - 1].sampledAt);
+  const lowerBound = latestTimestamp - 365 * DAY_MS;
+  const dailyPeaks = new Map();
+
+  for (const record of records) {
+    const sampledAtMs = Date.parse(record.sampledAt);
+    if (!Number.isFinite(sampledAtMs) || sampledAtMs < lowerBound || !record.modelReady) {
+      continue;
+    }
+
+    const day = record.sampledAt.slice(0, 10);
+    dailyPeaks.set(day, Math.max(dailyPeaks.get(day) ?? -Infinity, record.sigmaShift));
+  }
+
+  const sortedPeaks = Array.from(dailyPeaks.values()).sort((left, right) => right - left);
+  if (!sortedPeaks.length) {
+    return DEFAULT_ALARM_SIGMA_THRESHOLD;
+  }
+
+  if (sortedPeaks.length === 1) {
+    return Math.max(MIN_ALARM_SIGMA_THRESHOLD, Math.ceil(sortedPeaks[0] * 10) / 10);
+  }
+
+  const secondHighestPeak = sortedPeaks[1];
+  return Math.max(MIN_ALARM_SIGMA_THRESHOLD, Math.ceil((secondHighestPeak + 0.05) * 10) / 10);
+}
+
+function buildConcurrentPredictionContext(rows) {
+  const normalizedRows = rows.map((row) => ({
+    sampledAt: row.sampledAt,
+    concurrentCount: Number(row.concurrentCount || 0),
+  }));
+  const state = {
+    slotHistory: Array.from({ length: 48 }, () => []),
+    weekdaySlotHistory: Array.from({ length: 7 }, () => Array.from({ length: 48 }, () => [])),
+    slotResidualHistory: Array.from({ length: 48 }, () => []),
+    weekdaySlotResidualHistory: Array.from({ length: 7 }, () => Array.from({ length: 48 }, () => [])),
+    historySampleCount: 0,
+    alarmSigmaThreshold: DEFAULT_ALARM_SIGMA_THRESHOLD,
+  };
+  const provisionalRecords = [];
+
+  for (const row of normalizedRows) {
+    const prediction = buildConcurrentPredictionFromState(row.sampledAt, row.concurrentCount, state);
+    provisionalRecords.push({
+      sampledAt: row.sampledAt,
+      concurrentCount: row.concurrentCount,
+      ...prediction,
+    });
+
+    const timestampMs = Date.parse(row.sampledAt);
+    const historyEntry = {
+      timestampMs,
+      count: row.concurrentCount,
+    };
+    state.slotHistory[prediction.slot].push(historyEntry);
+    state.weekdaySlotHistory[prediction.weekday][prediction.slot].push(historyEntry);
+
+    if (prediction.modelReady) {
+      const residualEntry = {
+        timestampMs,
+        residual: prediction.divergence,
+      };
+      state.slotResidualHistory[prediction.slot].push(residualEntry);
+      state.weekdaySlotResidualHistory[prediction.weekday][prediction.slot].push(residualEntry);
+    }
+
+    state.historySampleCount += 1;
+  }
+
+  const alarmSigmaThreshold = calibrateConcurrentAlarmThreshold(provisionalRecords);
+  state.alarmSigmaThreshold = alarmSigmaThreshold;
+  const elevatedSigmaThreshold = Math.max(1.5, alarmSigmaThreshold / 2);
+  const records = provisionalRecords.map((record) => ({
+    ...record,
+    ...computeBaselineSignal(
+      Number(record.concurrentCount || 0),
+      Number(record.expectedConcurrentCount || 0),
+      Number(record.expectedConcurrentStdDev || CONCURRENT_MIN_STD_DEV),
+      alarmSigmaThreshold,
+    ),
+  }));
+  const bySampledAt = new Map(records.map((record) => [record.sampledAt, record]));
+
+  return {
+    records,
+    bySampledAt,
+    alarmSigmaThreshold,
+    elevatedSigmaThreshold,
+    state,
+  };
+}
+
+function getNearestConcurrentRecord(context, referenceIso) {
+  const exactMatch = context.bySampledAt.get(referenceIso);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const referenceTimestamp = Date.parse(referenceIso);
+  if (!Number.isFinite(referenceTimestamp)) {
+    return null;
+  }
+
+  let nearestRecord = null;
+  let nearestDifferenceMs = Number.POSITIVE_INFINITY;
+  for (const record of context.records) {
+    const differenceMs = Math.abs(Date.parse(record.sampledAt) - referenceTimestamp);
+    if (differenceMs < nearestDifferenceMs) {
+      nearestDifferenceMs = differenceMs;
+      nearestRecord = record;
+    }
+  }
+
+  return nearestDifferenceMs <= MATCH_WINDOW_MS ? nearestRecord : null;
+}
+
+function computeConcurrentPredictionModel(referenceIso, concurrentCount, concurrentContext = null) {
+  const context = concurrentContext || buildConcurrentPredictionContext(getAllRollingMetrics());
+  const referenceRecord = getNearestConcurrentRecord(context, referenceIso);
+
+  if (referenceRecord) {
+    const resolvedConcurrentCount = Number(concurrentCount ?? referenceRecord.concurrentCount ?? 0);
+    const compositeSignal = computeBaselineSignal(
+      resolvedConcurrentCount,
+      Number(referenceRecord.expectedConcurrentCount || 0),
+      Number(referenceRecord.expectedConcurrentStdDev || CONCURRENT_MIN_STD_DEV),
+      context.alarmSigmaThreshold,
+    );
+
+    return {
+      ...referenceRecord,
+      concurrentCount: resolvedConcurrentCount,
+      divergence: resolvedConcurrentCount - Number(referenceRecord.expectedConcurrentCount || 0),
+      sigmaShift: compositeSignal.sigmaShift,
+      gaugeValue: compositeSignal.gaugeValue,
+      alertLevel: compositeSignal.alertLevel,
+      emergencyLevel: compositeSignal.emergencyLevel,
+      alarmSigmaThreshold: context.alarmSigmaThreshold,
+      elevatedSigmaThreshold: context.elevatedSigmaThreshold,
+      compositeSignal,
+    };
+  }
+
+  const prediction = buildConcurrentPredictionFromState(referenceIso, concurrentCount, context.state);
+  const compositeSignal = computeBaselineSignal(
+    Number(concurrentCount || 0),
+    Number(prediction.expectedConcurrentCount || 0),
+    Number(prediction.expectedConcurrentStdDev || CONCURRENT_MIN_STD_DEV),
+    context.alarmSigmaThreshold,
+  );
+
+  return {
+    ...prediction,
+    alarmSigmaThreshold: context.alarmSigmaThreshold,
+    elevatedSigmaThreshold: context.elevatedSigmaThreshold,
+    compositeSignal,
   };
 }
 
@@ -216,107 +560,38 @@ function buildStoredHeatmapStatus(overrides = {}) {
     usedCache: null,
     matchedCount: null,
     airborneCount: null,
-    rolling24hCount: null,
     concurrentCount: null,
     ...savedStatus,
     ...overrides,
   };
 }
 
-function computeConcurrentPredictionModel(referenceIso, currentRolling24hCount, concurrentCount, globalBaseline) {
-  const canonicalReferenceIso = roundIsoToNearestHalfHour(referenceIso);
-  const recentWeekdayBaseline = getRecentWeekdayBaselineStats(canonicalReferenceIso, 4);
-  const recentTimeOfDayBaseline = getSmoothedTimeOfDayBaseline(canonicalReferenceIso, 7);
-  const yearAgoTargetAt = new Date(new Date(canonicalReferenceIso).getTime() - 365 * DAY_MS).toISOString();
-  const yearAgoReference = getRollingMetricNear(yearAgoTargetAt);
-  const yearAgoRollingCount = yearAgoReference?.rolling24hCount ?? null;
-  const blendedRollingBaseline =
-    average([recentWeekdayBaseline.mean || null, yearAgoRollingCount]) ??
-    recentTimeOfDayBaseline.rollingMean ??
-    currentRolling24hCount;
-  const ratioMean = recentTimeOfDayBaseline.ratioMean || 0;
-  const ratioStandardDeviation = recentTimeOfDayBaseline.ratioStandardDeviation || 0;
-  const expectedConcurrentCount =
-    blendedRollingBaseline && ratioMean
-      ? blendedRollingBaseline * ratioMean
-      : recentTimeOfDayBaseline.concurrentMean || concurrentCount;
-  const expectedConcurrentStdDev =
-    blendedRollingBaseline && ratioStandardDeviation
-      ? Math.max(1, blendedRollingBaseline * ratioStandardDeviation)
-      : Math.max(
-          1,
-          recentTimeOfDayBaseline.concurrentStandardDeviation ||
-            recentWeekdayBaseline.standardDeviation * Math.max(ratioMean, 0.01) ||
-            globalBaseline.standardDeviation * Math.max(ratioMean, 0.01) ||
-            expectedConcurrentCount * 0.1,
-        );
-  const compositeSignal = computeBaselineSignal(
-    concurrentCount,
-    expectedConcurrentCount,
-    expectedConcurrentStdDev,
-  );
-  const weekdaySignal = computeBaselineSignal(
-    currentRolling24hCount,
-    recentWeekdayBaseline.mean,
-    recentWeekdayBaseline.standardDeviation,
-  );
-  const timeOfDaySignal = computeBaselineSignal(
-    concurrentCount,
-    recentTimeOfDayBaseline.concurrentMean,
-    recentTimeOfDayBaseline.concurrentStandardDeviation,
-  );
-  const normalizationStdDev = recentWeekdayBaseline.standardDeviation || globalBaseline.standardDeviation;
-  const yearAgoSignal = computeReferenceSignal(
-    currentRolling24hCount,
-    yearAgoRollingCount,
-    normalizationStdDev,
-  );
+function getTrailingConcurrentRecords(records, days = 365) {
+  if (!records.length) {
+    return [];
+  }
 
-  return {
-    canonicalReferenceIso,
-    yearAgoTargetAt,
-    yearAgoReference,
-    yearAgoRollingCount,
-    recentWeekdayBaseline,
-    recentTimeOfDayBaseline,
-    blendedRollingBaseline,
-    ratioMean,
-    ratioStandardDeviation,
-    expectedConcurrentCount,
-    expectedConcurrentStdDev,
-    compositeSignal,
-    weekdaySignal,
-    timeOfDaySignal,
-    yearAgoSignal,
-  };
+  const latestTimestamp = Date.parse(records[records.length - 1].sampledAt);
+  const lowerBound = latestTimestamp - days * DAY_MS;
+  return records.filter((record) => Date.parse(record.sampledAt) >= lowerBound);
 }
 
 function buildDashboardPayload({ liveStatus: liveStatusOverride = null } = {}) {
   const tracking = getTrackingSummary();
   const liveStatus = buildStoredHeatmapStatus(liveStatusOverride || {});
   const referenceIso = liveStatus.latestSampledAt || new Date().toISOString();
-  const globalBaseline = getBaselineStats();
-  const currentRolling24hCount = getCurrentRollingCount(referenceIso, { liveSource: HEATMAP_SOURCE });
   const concurrentCount = getConcurrentCount(HEATMAP_SOURCE);
-  const currentModel = computeConcurrentPredictionModel(
-    referenceIso,
-    currentRolling24hCount,
-    concurrentCount,
-    globalBaseline,
-  );
-  const rollingSeries = getRecentRollingMetrics().map((sample) => {
-    const sampleModel = computeConcurrentPredictionModel(
-      sample.sampledAt,
-      sample.rolling24hCount,
-      sample.concurrentCount,
-      globalBaseline,
-    );
-
-    return {
-      ...sample,
-      predictedConcurrentCount: sampleModel.expectedConcurrentCount,
-    };
-  });
+  const rollingHistory = getAllRollingMetrics();
+  const concurrentContext = buildConcurrentPredictionContext(rollingHistory);
+  const currentModel = computeConcurrentPredictionModel(referenceIso, concurrentCount, concurrentContext);
+  const archiveSeries = getTrailingConcurrentRecords(concurrentContext.records).map((record) => ({
+    sampledAt: record.sampledAt,
+    concurrentCount: record.concurrentCount,
+    predictedConcurrentCount: record.expectedConcurrentCount,
+    predictedConcurrentStdDev: record.expectedConcurrentStdDev,
+    divergence: record.divergence,
+    sigmaShift: record.sigmaShift,
+  }));
 
   return {
     mode: tracking.configured ? "configured" : "empty",
@@ -325,20 +600,19 @@ function buildDashboardPayload({ liveStatus: liveStatusOverride = null } = {}) {
     watchlist: tracking,
     liveStatus: {
       ...liveStatus,
-      rolling24hCount: currentRolling24hCount,
       concurrentCount,
     },
     current: {
       asOf: referenceIso,
-      rolling24hCount: currentRolling24hCount,
       concurrentCount,
       baselineMean: currentModel.expectedConcurrentCount,
       baselineStdDev: currentModel.expectedConcurrentStdDev,
-      globalBaselineMean: globalBaseline.mean,
-      globalBaselineStdDev: globalBaseline.standardDeviation,
       zScore: currentModel.compositeSignal.sigmaShift,
       gaugeValue: currentModel.compositeSignal.gaugeValue,
       alertLevel: currentModel.compositeSignal.alertLevel,
+      emergencyLevel: currentModel.compositeSignal.emergencyLevel,
+      alarmSigmaThreshold: currentModel.alarmSigmaThreshold,
+      elevatedSigmaThreshold: currentModel.elevatedSigmaThreshold,
     },
     signals: {
       composite: {
@@ -346,61 +620,29 @@ function buildDashboardPayload({ liveStatus: liveStatusOverride = null } = {}) {
         actualConcurrentCount: concurrentCount,
         expectedConcurrentCount: currentModel.expectedConcurrentCount,
         expectedConcurrentStdDev: currentModel.expectedConcurrentStdDev,
-        blendedRollingBaseline: currentModel.blendedRollingBaseline,
+        timeOfDayExpected: currentModel.timeOfDayExpected,
+        timeOfWeekExpected: currentModel.timeOfWeekExpected,
+        timeOfDaySampleCount: currentModel.timeOfDaySampleCount,
+        timeOfWeekSampleCount: currentModel.timeOfWeekSampleCount,
+        timeOfWeekBlendWeight: currentModel.timeOfWeekBlendWeight,
         sigmaShift: currentModel.compositeSignal.sigmaShift,
         gaugeValue: currentModel.compositeSignal.gaugeValue,
         alertLevel: currentModel.compositeSignal.alertLevel,
-      },
-      weekday: {
-        asOf: referenceIso,
-        currentRolling24hCount,
-        baselineMean: currentModel.recentWeekdayBaseline.mean,
-        baselineStdDev: currentModel.recentWeekdayBaseline.standardDeviation,
-        sampleCount: currentModel.recentWeekdayBaseline.sampleCount,
-        samples: currentModel.recentWeekdayBaseline.samples,
-        sigmaShift: currentModel.weekdaySignal.sigmaShift,
-        gaugeValue: currentModel.weekdaySignal.gaugeValue,
-        alertLevel: currentModel.weekdaySignal.alertLevel,
-      },
-      yearAgo: {
-        asOf: referenceIso,
-        currentRolling24hCount,
-        referenceCount: currentModel.yearAgoRollingCount,
-        referenceSampledAt: currentModel.yearAgoReference?.sampledAt ?? null,
-        referenceTargetAt: currentModel.yearAgoTargetAt,
-        differenceSeconds: currentModel.yearAgoReference?.differenceSeconds ?? null,
-        deltaCount: currentModel.yearAgoSignal.deltaCount,
-        percentChange: currentModel.yearAgoSignal.percentChange,
-        sigmaShift: currentModel.yearAgoSignal.sigmaShift,
-        gaugeValue: currentModel.yearAgoSignal.gaugeValue,
-        alertLevel: currentModel.yearAgoSignal.alertLevel,
-      },
-      timeOfDay: {
-        asOf: referenceIso,
-        actualConcurrentCount: concurrentCount,
-        concurrentMean: currentModel.recentTimeOfDayBaseline.concurrentMean,
-        concurrentStdDev: currentModel.recentTimeOfDayBaseline.concurrentStandardDeviation,
-        rollingMean: currentModel.recentTimeOfDayBaseline.rollingMean,
-        ratioMean: currentModel.ratioMean,
-        ratioStdDev: currentModel.ratioStandardDeviation,
-        sampleCount: currentModel.recentTimeOfDayBaseline.sampleCount,
-        samples: currentModel.recentTimeOfDayBaseline.samples,
-        sigmaShift: currentModel.timeOfDaySignal.sigmaShift,
-        gaugeValue: currentModel.timeOfDaySignal.gaugeValue,
-        alertLevel: currentModel.timeOfDaySignal.alertLevel,
+        emergencyLevel: currentModel.compositeSignal.emergencyLevel,
+        alarmSigmaThreshold: currentModel.alarmSigmaThreshold,
+        elevatedSigmaThreshold: currentModel.elevatedSigmaThreshold,
       },
     },
     liveAircraft: getLiveAircraft(HEATMAP_SOURCE),
     trends: {
-      daily: getRecentDailyMetrics(),
-      rolling: rollingSeries,
+      archive: archiveSeries,
     },
   };
 }
 
 function buildDashboardSnapshot({ liveStatus = null, snapshotGeneratedAt = new Date().toISOString() } = {}) {
   const trackedCount = getTrackedAircraftCount();
-  const hasAnyHistoricalData = getBaselineStats().sampleCount > 0;
+  const hasAnyHistoricalData = getAllRollingMetrics().length > 0;
   const onlyDemoData = areAllTrackedAircraftDemo();
 
   if ((!trackedCount && !hasAnyHistoricalData) || onlyDemoData) {
@@ -420,6 +662,7 @@ module.exports = {
   buildDashboardPayload,
   buildDashboardSnapshot,
   buildStoredHeatmapStatus,
+  buildConcurrentPredictionContext,
   computeConcurrentPredictionModel,
   HEATMAP_SOURCE,
 };

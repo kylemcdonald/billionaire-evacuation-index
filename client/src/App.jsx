@@ -1,8 +1,7 @@
-import { startTransition, useEffect, useEffectEvent, useRef, useState } from 'react'
+import { startTransition, useEffect, useEffectEvent, useState } from 'react'
 import {
   Area,
   AreaChart,
-  Brush,
   CartesianGrid,
   Line,
   LineChart,
@@ -15,7 +14,6 @@ import {
 import { geoEqualEarth, geoGraticule10, geoMercator, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
 import worldAtlas from 'world-atlas/countries-110m.json'
-import apocalypseOcean from './assets/apocalypse-ocean.jpg'
 import './App.css'
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || '/api/dashboard'
@@ -26,7 +24,6 @@ const MAP_HEIGHT = 410
 const worldGeographies = feature(worldAtlas, worldAtlas.objects.countries).features
 
 const NARROW_HISTORY_BREAKPOINT = 820
-const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const CHART_TICK_COLOR = '#000000'
 const CHART_GRID_COLOR = '#d4d4d4'
 const CHART_PRIMARY_COLOR = '#0000ee'
@@ -38,21 +35,7 @@ const CHART_TOOLTIP_STYLE = {
   color: '#000000',
 }
 const WORLD_FEATURE_COLLECTION = { type: 'FeatureCollection', features: worldGeographies }
-
-const alertCopy = {
-  normal: {
-    label: 'All Quiet',
-    detail: 'No visible sprint for the runway. The bunker class appears calm, for now.',
-  },
-  elevated: {
-    label: 'Engines Spooling',
-    detail: 'More aircraft are up than the model expects. Maybe noise. Maybe everyone found their go-bag.',
-  },
-  alarm: {
-    label: 'Bunker Run',
-    detail: 'The private-jet scramble is materially above precedent. If someone got the memo early, this is the zone.',
-  },
-}
+const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.png'
 
 function formatCount(value) {
   return new Intl.NumberFormat().format(Math.round(value || 0))
@@ -104,32 +87,36 @@ function formatTimestamp(value) {
   }).format(roundedDate)
 }
 
-function formatRoundedTime(value) {
-  const roundedDate = roundDateToNearestHalfHour(value)
-  if (!roundedDate) {
-    return 'n/a'
-  }
-
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(roundedDate)
-}
-
-function formatCompactDate(value) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-  }).format(new Date(`${value}T00:00:00Z`))
-}
-
-function formatLongDate(value) {
+function formatArchiveRangeDate(value) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(`${value}T00:00:00Z`))
+  }).format(new Date(value))
+}
+
+function formatArchiveTick(value, windowDays) {
+  const date = new Date(value)
+  if (windowDays <= 2) {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date)
+  }
+
+  if (windowDays <= 30) {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+    }).format(date)
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(date)
 }
 
 function formatAltitude(value) {
@@ -165,76 +152,12 @@ function formatCoordinates(lat, lon) {
   return `${formatCoordinate(lat, 'N', 'S')}, ${formatCoordinate(lon, 'E', 'W')}`
 }
 
-function formatPercent(value) {
-  if (!Number.isFinite(value)) {
-    return '0%'
-  }
-
-  return `${(value * 100).toFixed(value >= 0.1 ? 0 : 1)}%`
-}
-
-function formatSignedPercent(value) {
-  if (!Number.isFinite(value)) {
-    return '0%'
-  }
-
-  const percentage = value * 100
-  const digits = Math.abs(percentage) >= 10 ? 0 : 1
-  return `${percentage >= 0 ? '+' : ''}${percentage.toFixed(digits)}%`
-}
-
-function formatWeekdayName(value) {
-  if (!value) {
-    return 'weekday'
-  }
-
-  return new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    timeZone: 'UTC',
-  }).format(new Date(value))
-}
-
-function formatRecentWeekdayWindowLabel(weekdayName, sampleCount = 4) {
-  if (!weekdayName || weekdayName === 'weekday') {
-    return `Last ${sampleCount} Matching Weekdays`
-  }
-
-  return `Last ${sampleCount} ${weekdayName}s`
-}
-
-function getUtcWeekday(value) {
-  return new Date(`${value}T00:00:00Z`).getUTCDay()
-}
-
 function normalizeModelLabel(value) {
   const normalized = String(value || '')
     .replace(/\s+/g, ' ')
     .trim()
 
   return normalized || 'Unknown model'
-}
-
-function clampZoomRange(range, length) {
-  if (!length) {
-    return { startIndex: 0, endIndex: 0 }
-  }
-
-  const maxIndex = length - 1
-  const startIndex = Math.max(0, Math.min(Number(range?.startIndex ?? 0), maxIndex))
-  const endIndex = Math.max(startIndex, Math.min(Number(range?.endIndex ?? maxIndex), maxIndex))
-  return { startIndex, endIndex }
-}
-
-function buildTrailingRange(length, windowSize) {
-  if (!length) {
-    return { startIndex: 0, endIndex: 0 }
-  }
-
-  const clampedWindow = Math.max(1, Math.min(windowSize, length))
-  return {
-    startIndex: Math.max(0, length - clampedWindow),
-    endIndex: length - 1,
-  }
 }
 
 function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
@@ -259,37 +182,6 @@ function useIsNarrowLayout(breakpoint = NARROW_HISTORY_BREAKPOINT) {
   }, [breakpoint])
 
   return isNarrowLayout
-}
-
-function getEmergencyLevel(sigmaShift) {
-  const normalizedSigma = Math.max(0, Number(sigmaShift || 0))
-  return Math.min(5, Math.max(1, Math.floor(normalizedSigma / 2) + 1))
-}
-
-function buildWeekdayPredictionSeries(data) {
-  const weekdayTotals = Array.from({ length: 7 }, () => ({ total: 0, count: 0 }))
-
-  for (const row of data) {
-    const weekday = getUtcWeekday(row.day)
-    weekdayTotals[weekday].total += Number(row.uniqueAirborneCount || 0)
-    weekdayTotals[weekday].count += 1
-  }
-
-  return data.map((row) => {
-    const weekday = getUtcWeekday(row.day)
-    const weekdayStats = weekdayTotals[weekday]
-    const predictedCount = weekdayStats.count
-      ? weekdayStats.total / weekdayStats.count
-      : Number(row.uniqueAirborneCount || 0)
-
-    return {
-      ...row,
-      weekday,
-      weekdayLabel: WEEKDAY_LABELS[weekday],
-      predictedCount,
-      divergence: Number(row.uniqueAirborneCount || 0) - predictedCount,
-    }
-  })
 }
 
 function buildLiveModelSummary(aircraft) {
@@ -341,8 +233,7 @@ function createUnitedStatesProjection() {
 
 function EmergencySummary({ title, signal, latestSweep, actualCount, expectedCount, trackedCount }) {
   const sigmaShift = signal?.sigmaShift ?? signal?.zScore ?? 0
-  const label = alertCopy[signal?.alertLevel || 'normal']
-  const emergencyLevel = getEmergencyLevel(sigmaShift)
+  const emergencyLevel = Number(signal?.emergencyLevel || 1)
 
   return (
     <section className="panel dial-panel">
@@ -350,14 +241,11 @@ function EmergencySummary({ title, signal, latestSweep, actualCount, expectedCou
         <div><h2>{title}</h2></div>
       </div>
       <p className="emergency-line">
-        <strong>Emergency level: {emergencyLevel}/5.</strong> {label.detail}
+        <strong>Emergency level: {emergencyLevel}/5.</strong>
       </p>
-      <p className="panel-lede">
-        Level 5 corresponds to the current red threshold. The current deviation is {formatSigned(sigmaShift)} relative
-        to the model estimate.
-      </p>
+      <p className="panel-lede">Current deviation: {formatSigned(sigmaShift)}</p>
       <div className="summary-text-block">
-        <p><strong>Latest sweep:</strong> {latestSweep}</p>
+        <p><strong>Last updated:</strong> {latestSweep}</p>
         <p><strong>Aircraft currently airborne:</strong> {formatCount(actualCount)}</p>
         <p><strong>Expected airborne aircraft:</strong> {formatCount(expectedCount)}</p>
         <p><strong>Tracked aircraft:</strong> {formatCount(trackedCount)}</p>
@@ -366,19 +254,102 @@ function EmergencySummary({ title, signal, latestSweep, actualCount, expectedCou
   )
 }
 
-function RollingChart({ data, summaryCopy, summaryMetrics }) {
+function ArchiveChart({ data }) {
+  return <ArchiveChartPanel key={`archive-${data.length}`} data={data} defaultWindowDays={3} />
+}
+
+function ArchiveChartPanel({ data, defaultWindowDays }) {
+  const [windowDays, setWindowDays] = useState(defaultWindowDays)
+
+  if (!data.length) {
+    return (
+      <section className="panel chart-panel">
+        <div className="panel-header">
+          <div><h2>Escape Traffic Archive</h2></div>
+        </div>
+        <div className="empty-state">No historical half-hour data is available yet.</div>
+      </section>
+    )
+  }
+
+  const latestTimestamp = Date.parse(data[data.length - 1]?.sampledAt || 0)
+  const lowerBound =
+    windowDays >= 365 ? Number.NEGATIVE_INFINITY : latestTimestamp - windowDays * 24 * 60 * 60 * 1000
+  const visibleData = data.filter((sample) => Date.parse(sample.sampledAt) >= lowerBound)
+  const visibleStart = visibleData[0]?.sampledAt
+  const visibleEnd = visibleData[visibleData.length - 1]?.sampledAt
+
   return (
-    <section className="panel chart-panel rolling-panel">
+    <section className="panel chart-panel history-panel">
       <div className="panel-header">
-        <div><h2>Recent Concurrent Aircraft</h2></div>
+        <div><h2>Escape Traffic Archive</h2></div>
+      </div>
+      <div className="chart-toolbar">
+        <div className="chart-range-copy">
+          <strong>
+            {formatArchiveRangeDate(visibleStart)} to {formatArchiveRangeDate(visibleEnd)}
+          </strong>
+        </div>
+      </div>
+      <div className="chart-toolbar chart-toolbar-archive">
+        <label className="chart-slider-label">
+          <span>Days in view: {windowDays}</span>
+          <input
+            type="range"
+            min="3"
+            max="365"
+            step="1"
+            value={windowDays}
+            onChange={(event) => setWindowDays(Number(event.target.value))}
+          />
+        </label>
+        <fieldset className="chart-radio-group">
+          <legend className="sr-only">Historical archive window</legend>
+          <label className="chart-radio-option">
+            <input
+              type="radio"
+              name="archive-window"
+              checked={windowDays === 3}
+              onChange={() => setWindowDays(3)}
+            />
+            <span>3 days</span>
+          </label>
+          <label className="chart-radio-option">
+            <input
+              type="radio"
+              name="archive-window"
+              checked={windowDays === 30}
+              onChange={() => setWindowDays(30)}
+            />
+            <span>30D</span>
+          </label>
+          <label className="chart-radio-option">
+            <input
+              type="radio"
+              name="archive-window"
+              checked={windowDays === 90}
+              onChange={() => setWindowDays(90)}
+            />
+            <span>90D</span>
+          </label>
+          <label className="chart-radio-option">
+            <input
+              type="radio"
+              name="archive-window"
+              checked={windowDays === 365}
+              onChange={() => setWindowDays(365)}
+            />
+            <span>Full Year</span>
+          </label>
+        </fieldset>
       </div>
       <div className="chart-frame">
-        <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={data} margin={{ top: 12, right: 18, left: -14, bottom: 0 }}>
+        <ResponsiveContainer width="100%" height={320}>
+          <LineChart data={visibleData} margin={{ top: 14, right: 18, left: -14, bottom: 0 }}>
             <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
             <XAxis
               dataKey="sampledAt"
-              tickFormatter={formatRoundedTime}
+              tickFormatter={(value) => formatArchiveTick(value, windowDays)}
               tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
               axisLine={false}
               tickLine={false}
@@ -402,9 +373,10 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
               type="linear"
               dataKey="concurrentCount"
               stroke={CHART_PRIMARY_COLOR}
-              strokeWidth={3}
+              strokeWidth={2.5}
               dot={false}
-              name="Observed"
+              name="Observed concurrent"
+              isAnimationActive={false}
             />
             <Line
               type="linear"
@@ -413,192 +385,30 @@ function RollingChart({ data, summaryCopy, summaryMetrics }) {
               strokeWidth={2}
               strokeDasharray="7 6"
               dot={false}
-              name="Expected"
+              name="Predicted concurrent"
               isAnimationActive={false}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <div className="chart-subsection chart-summary-section">
-        <p className="panel-lede">{summaryCopy}</p>
-        <table className="summary-table" border="1">
-          <tbody>
-            {summaryMetrics.map((metric) => (
-              <tr key={metric.note}>
-                <td>{metric.value}</td>
-                <td>{metric.note}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  )
-}
-
-function DailyChart({ data }) {
-  const isNarrowLayout = useIsNarrowLayout()
-
-  return <DailyChartPanel key={`${isNarrowLayout ? 'narrow' : 'wide'}-${data.length}`} data={data} isNarrowLayout={isNarrowLayout} />
-}
-
-function DailyChartPanel({ data, isNarrowLayout }) {
-  const [zoomRange, setZoomRange] = useState(null)
-  const [activeBrushEdge, setActiveBrushEdge] = useState(null)
-  const overviewRef = useRef(null)
-
-  if (!data.length) {
-    return (
-      <section className="panel chart-panel">
-        <div className="panel-header">
-          <div><h2>Airborne History</h2></div>
-        </div>
-        <div className="empty-state">No historical daily data is available yet.</div>
-      </section>
-    )
-  }
-
-  const visibleRange = clampZoomRange(zoomRange ?? buildTrailingRange(data.length, isNarrowLayout ? 30 : 90), data.length)
-  const visibleData = data.slice(visibleRange.startIndex, visibleRange.endIndex + 1)
-  const visibleStart = visibleData[0]?.day
-  const visibleEnd = visibleData[visibleData.length - 1]?.day
-  const chartTitle =
-    visibleData.length <= 45 ? 'One Month Of Escape Traffic' : visibleData.length >= 300 ? 'One Year Of Escape Traffic' : 'Escape Traffic Archive'
-  const brushStartRatio = data.length > 1 ? visibleRange.startIndex / (data.length - 1) : 0
-  const brushEndRatio = data.length > 1 ? visibleRange.endIndex / (data.length - 1) : 1
-  const brushStartLabel = formatCompactDate(data[visibleRange.startIndex]?.day)
-  const brushEndLabel = formatCompactDate(data[visibleRange.endIndex]?.day)
-
-  function applyPreset(days) {
-    setZoomRange(buildTrailingRange(data.length, days))
-  }
-
-  function updateActiveBrushEdge(event) {
-    const overviewNode = overviewRef.current
-    if (!overviewNode || !data.length) {
-      return
-    }
-
-    const rect = overviewNode.getBoundingClientRect()
-    const contentLeft = 6
-    const contentRight = 28
-    const contentWidth = Math.max(rect.width - contentLeft - contentRight, 1)
-    const pointerX = event.clientX - rect.left
-    const startX = contentLeft + brushStartRatio * contentWidth
-    const endX = contentLeft + brushEndRatio * contentWidth
-    const snapDistance = 18
-
-    if (Math.abs(pointerX - startX) <= snapDistance) {
-      setActiveBrushEdge('start')
-      return
-    }
-
-    if (Math.abs(pointerX - endX) <= snapDistance) {
-      setActiveBrushEdge('end')
-      return
-    }
-
-    setActiveBrushEdge(null)
-  }
-
-  return (
-    <section className="panel chart-panel history-panel">
-      <div className="panel-header">
-        <div><h2>{chartTitle}</h2></div>
-      </div>
-      <div className="chart-toolbar">
-        <div className="chart-range-copy">
-          <strong>
-            {formatLongDate(visibleStart)} to {formatLongDate(visibleEnd)}
-          </strong>
-          <span>{formatCount(visibleData.length)} daily samples in view</span>
-        </div>
-        <div className="chart-preset-group" role="group" aria-label="Historical zoom presets">
-          <button type="button" className="chart-preset" onClick={() => applyPreset(30)}>
-            30D
-          </button>
-          <button type="button" className="chart-preset" onClick={() => applyPreset(90)}>
-            90D
-          </button>
-          <button type="button" className="chart-preset" onClick={() => applyPreset(365)}>
-            Full Year
-          </button>
-        </div>
-      </div>
-      <div className="chart-frame">
-        <ResponsiveContainer width="100%" height={320}>
-          <AreaChart data={visibleData} margin={{ top: 14, right: 28, left: 6, bottom: 0 }}>
-            <defs>
-              <linearGradient id="dailyFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.28" />
-                <stop offset="100%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
-            <XAxis
-              dataKey="day"
-              tickFormatter={formatCompactDate}
-              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
-              axisLine={false}
-              tickLine={false}
-              minTickGap={24}
-            />
-            <YAxis
-              tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
-              axisLine={false}
-              tickLine={false}
-              width={34}
-              allowDecimals={false}
-            />
-            <Tooltip
-              contentStyle={CHART_TOOLTIP_STYLE}
-              allowEscapeViewBox={{ x: true, y: true }}
-              wrapperStyle={{ zIndex: 6 }}
-              labelFormatter={(value) => formatLongDate(value)}
-              formatter={(value, name) => [
-                formatCount(value),
-                name === 'Weekday prediction' ? 'Weekday prediction' : 'Unique airborne',
-              ]}
-            />
-            <Area
-              type="monotone"
-              dataKey="uniqueAirborneCount"
-              stroke={CHART_PRIMARY_COLOR}
-              strokeWidth={3}
-              fill="url(#dailyFill)"
-              name="Unique airborne"
-            />
-            <Area
-              type="monotone"
-              dataKey="predictedCount"
-              stroke={CHART_SECONDARY_COLOR}
-              strokeWidth={2}
-              strokeDasharray="7 6"
-              fillOpacity={0}
-              name="Weekday prediction"
-              isAnimationActive={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
       <div className="chart-subsection">
         <div className="chart-subsection-header">
-          <strong>Difference From Weekday Estimate</strong>
-          <span>Positive values indicate more airborne aircraft than the weekday estimate.</span>
+          <strong>Difference from Predicted Concurrent Activity</strong>
+          <span>Positive values indicate more aircraft airborne than predicted for that half-hour slot.</span>
         </div>
         <div className="chart-frame chart-frame-secondary">
           <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={visibleData} margin={{ top: 8, right: 28, left: 6, bottom: 0 }}>
+            <AreaChart data={visibleData} margin={{ top: 8, right: 18, left: -6, bottom: 0 }}>
               <defs>
-                <linearGradient id="divergenceFill" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="archiveDivergenceFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.18" />
                   <stop offset="100%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.02" />
                 </linearGradient>
               </defs>
               <CartesianGrid stroke={CHART_GRID_COLOR} strokeDasharray="2 2" vertical={false} />
               <XAxis
-                dataKey="day"
-                tickFormatter={formatCompactDate}
+                dataKey="sampledAt"
+                tickFormatter={(value) => formatArchiveTick(value, windowDays)}
                 tick={{ fill: CHART_TICK_COLOR, fontSize: 12 }}
                 axisLine={false}
                 tickLine={false}
@@ -613,79 +423,24 @@ function DailyChartPanel({ data, isNarrowLayout }) {
               />
               <Tooltip
                 contentStyle={CHART_TOOLTIP_STYLE}
-                allowEscapeViewBox={{ x: true, y: true }}
+                allowEscapeViewBox={{ x: false, y: true }}
                 wrapperStyle={{ zIndex: 6 }}
-                labelFormatter={(value) => formatLongDate(value)}
-                formatter={(value) => [formatDelta(value), 'Divergence']}
+                labelFormatter={(value) => formatTimestamp(value)}
+                formatter={(value) => [formatDelta(value), 'Difference']}
               />
-              <ReferenceLine y={0} stroke="rgba(255, 245, 227, 0.28)" strokeDasharray="5 5" />
+              <ReferenceLine y={0} stroke="#999999" strokeDasharray="5 5" />
               <Area
-                type="monotone"
+                type="linear"
                 dataKey="divergence"
                 stroke={CHART_PRIMARY_COLOR}
                 strokeWidth={2}
-                fill="url(#divergenceFill)"
-                name="Divergence"
+                fill="url(#archiveDivergenceFill)"
+                name="Difference"
                 isAnimationActive={false}
               />
             </AreaChart>
           </ResponsiveContainer>
         </div>
-      </div>
-      <div
-        ref={overviewRef}
-        className="chart-overview"
-        onMouseMove={updateActiveBrushEdge}
-        onMouseLeave={() => setActiveBrushEdge(null)}
-      >
-        <div className="brush-range-labels" aria-hidden="true">
-          {activeBrushEdge === 'start' ? (
-            <span className="brush-range-label brush-range-label-start" style={{ left: `calc(${brushStartRatio * 100}% + 12px)` }}>
-              {brushStartLabel}
-            </span>
-          ) : null}
-          {activeBrushEdge === 'end' ? (
-            <span className="brush-range-label brush-range-label-end" style={{ left: `calc(${brushEndRatio * 100}% - 12px)` }}>
-              {brushEndLabel}
-            </span>
-          ) : null}
-        </div>
-        <ResponsiveContainer width="100%" height={88}>
-          <AreaChart data={data} margin={{ top: 0, right: 28, left: 6, bottom: 0 }}>
-            <defs>
-              <linearGradient id="dailyOverviewFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.2" />
-                <stop offset="100%" stopColor={CHART_PRIMARY_COLOR} stopOpacity="0.02" />
-              </linearGradient>
-            </defs>
-            <Area
-              type="monotone"
-              dataKey="uniqueAirborneCount"
-              stroke={CHART_PRIMARY_COLOR}
-              strokeWidth={1.5}
-              fill="url(#dailyOverviewFill)"
-              isAnimationActive={false}
-            />
-            <XAxis dataKey="day" hide />
-            <YAxis hide />
-            <Brush
-              dataKey="day"
-              height={32}
-              startIndex={visibleRange.startIndex}
-              endIndex={visibleRange.endIndex}
-              onChange={(nextRange) => {
-                if (!Number.isInteger(nextRange?.startIndex) || !Number.isInteger(nextRange?.endIndex)) {
-                  return
-                }
-                setZoomRange(clampZoomRange(nextRange, data.length))
-              }}
-              travellerWidth={14}
-              stroke={CHART_PRIMARY_COLOR}
-              fill="#f2f2f2"
-              tickFormatter={formatCompactDate}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
       </div>
     </section>
   )
@@ -700,12 +455,16 @@ function GlobalMap({ aircraft }) {
   const graticulePath = path(geoGraticule10())
   const markerCoreRadius = isNarrowLayout ? 8.5 : 6.5
   const markerHaloRadius = isNarrowLayout ? 15 : 12
+  const markerHitRadius = isNarrowLayout ? 24 : 16
+
+  function toggleActivePlane(planeHex) {
+    setActivePlaneHex((currentHex) => (currentHex === planeHex ? null : planeHex))
+  }
 
   return (
     <section className="panel map-panel">
       <div className="panel-header">
         <div><h2>Aircraft Positions</h2></div>
-        <span className="map-badge">{aircraft.length} aloft</span>
       </div>
 
       <div className="map-frame">
@@ -751,6 +510,16 @@ function GlobalMap({ aircraft }) {
           className={`map-svg${isNarrowLayout ? ' map-svg-narrow' : ''}`}
           role="img"
           aria-label="Current aircraft positions"
+          onPointerUp={
+            isNarrowLayout
+              ? (event) => {
+                  if (event.target !== event.currentTarget) {
+                    return
+                  }
+                  setActivePlaneHex(null)
+                }
+              : undefined
+          }
         >
           <rect x="8" y="8" width="784" height="394" rx={isNarrowLayout ? 16 : 198} className="map-sphere" />
           <path d={graticulePath} className="map-graticule" />
@@ -772,11 +541,35 @@ function GlobalMap({ aircraft }) {
                 onMouseLeave={isNarrowLayout ? undefined : () => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : currentHex))}
                 onFocus={() => setActivePlaneHex(plane.hex)}
                 onBlur={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : currentHex))}
-                onClick={() => setActivePlaneHex((currentHex) => (currentHex === plane.hex ? null : plane.hex))}
+                onClick={(event) => {
+                  if (isNarrowLayout) {
+                    return
+                  }
+
+                  event.stopPropagation()
+                  toggleActivePlane(plane.hex)
+                }}
+                onPointerDown={(event) => {
+                  if (!isNarrowLayout) {
+                    return
+                  }
+
+                  event.preventDefault()
+                  event.stopPropagation()
+                  toggleActivePlane(plane.hex)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    toggleActivePlane(plane.hex)
+                  }
+                }}
                 tabIndex={0}
                 role="button"
+                aria-pressed={plane.hex === activePlaneHex}
                 aria-label={`${plane.label || plane.registration || plane.hex?.toUpperCase()} at ${formatAltitude(plane.altitudeFt)}, ${formatSpeed(plane.groundSpeedKt)}`}
               >
+                <circle r={markerHitRadius} className="map-marker-hit" />
                 <circle r={markerCoreRadius} className="map-marker-core" />
                 <circle r={markerHaloRadius} className="map-marker-halo" />
                 <title>{`${plane.label} · ${formatAltitude(plane.altitudeFt)} · ${formatSpeed(plane.groundSpeedKt)}`}</title>
@@ -804,9 +597,6 @@ function ModelSummaryList({ aircraft }) {
             <li key={entry.modelLabel}>
               <div>
                 <strong>{entry.modelLabel}</strong>
-                <span>
-                  {formatCount(entry.count)} in the air now • {formatPercent(entry.share)} of visible escape traffic
-                </span>
               </div>
               <strong className="model-count">{formatCount(entry.count)}</strong>
             </li>
@@ -868,8 +658,10 @@ function App() {
     }
   }, [])
 
+  let content = null
+
   if (error && !dashboard) {
-    return (
+    content = (
       <main className="app-shell">
         <section className="panel error-panel">
           <h1>Data Unavailable</h1>
@@ -877,139 +669,93 @@ function App() {
         </section>
       </main>
     )
-  }
-
-  if (!dashboard) {
-    return (
+  } else if (!dashboard) {
+    content = (
       <main className="app-shell">
         <section className="panel loading-panel">
           <h1>Loading</h1>
         </section>
       </main>
     )
-  }
+  } else {
+    const archiveData = dashboard.trends?.archive ?? []
+    const liveAircraft = dashboard.liveAircraft ?? []
+    const liveStatus = dashboard.liveStatus ?? null
+    const compositeSignal = dashboard.signals?.composite ?? {
+      asOf: dashboard.current?.asOf,
+      actualConcurrentCount: dashboard.current?.concurrentCount,
+      expectedConcurrentCount: dashboard.current?.baselineMean,
+      expectedConcurrentStdDev: dashboard.current?.baselineStdDev,
+      sigmaShift: dashboard.current?.zScore,
+      alertLevel: dashboard.current?.alertLevel,
+    }
 
-  const dailyData = dashboard.trends?.daily ?? []
-  const modeledDailyData = buildWeekdayPredictionSeries(dailyData)
-  const rollingData = dashboard.trends?.rolling ?? []
-  const liveAircraft = dashboard.liveAircraft ?? []
-  const liveStatus = dashboard.liveStatus ?? null
-  const compositeSignal = dashboard.signals?.composite ?? {
-    asOf: dashboard.current?.asOf,
-    actualConcurrentCount: dashboard.current?.concurrentCount,
-    expectedConcurrentCount: dashboard.current?.baselineMean,
-    expectedConcurrentStdDev: dashboard.current?.baselineStdDev,
-    sigmaShift: dashboard.current?.zScore,
-    alertLevel: dashboard.current?.alertLevel,
+    content = (
+      <main className="app-shell">
+        {dashboard.warning ? (
+          <section className="status-banner">
+            <strong>{dashboard.mode === 'demo' ? 'Demo mode.' : 'Configuration required.'}</strong>
+            <span>{dashboard.warning}</span>
+          </section>
+        ) : null}
+
+        {!dashboard.warning && !liveStatus?.latestSampledAt ? (
+          <section className="status-banner">
+            <strong>No recent sweep.</strong>
+            <span>The backend polls the newest heatmap every 30 minutes and serves the latest cached sample.</span>
+          </section>
+        ) : null}
+
+        {liveStatus?.lastError ? (
+          <section className="status-banner">
+            <strong>Refresh error.</strong>
+            <span>
+              {liveStatus.lastError}
+              {liveStatus.nextRefreshAt ? ` Next sweep: ${formatTimestamp(liveStatus.nextRefreshAt)}.` : ''}
+            </span>
+          </section>
+        ) : null}
+
+        <section className="focus-grid">
+          <section className="panel hero-copy-panel">
+            <h1>Apocalypse Early Warning System</h1>
+            <p className="hero-copy">
+              Private jet activity monitor
+            </p>
+            <p className="hero-caption">
+              This dashboard tracks a cohort of private aircraft and compares current airborne activity against recent
+              historical baselines.
+            </p>
+          </section>
+          <div className="dial-stack">
+            <EmergencySummary
+              title="Current Assessment"
+              signal={compositeSignal}
+              latestSweep={formatTimestamp(dashboard.current?.asOf)}
+              actualCount={compositeSignal.actualConcurrentCount}
+              expectedCount={compositeSignal.expectedConcurrentCount}
+              trackedCount={dashboard.cohort?.trackedCount ?? dashboard.watchlist?.trackedCount}
+            />
+          </div>
+        </section>
+
+        <section className="focus-map-grid">
+          <GlobalMap aircraft={liveAircraft} />
+        </section>
+
+        <section className="details-stack">
+          <ArchiveChart data={archiveData} />
+          <ModelSummaryList aircraft={liveAircraft} />
+        </section>
+      </main>
+    )
   }
-  const weekdaySignal = dashboard.signals?.weekday ?? {
-    asOf: dashboard.current?.asOf,
-    currentRolling24hCount: dashboard.current?.rolling24hCount,
-    baselineMean: dashboard.current?.baselineMean,
-    baselineStdDev: dashboard.current?.baselineStdDev,
-  }
-  const yearAgoSignal = dashboard.signals?.yearAgo ?? null
-  const timeOfDaySignal = dashboard.signals?.timeOfDay ?? null
-  const weekdayName = formatWeekdayName(weekdaySignal.asOf)
-  const weekdayWindowLabel = formatRecentWeekdayWindowLabel(weekdayName, weekdaySignal.sampleCount || 4)
-  const concurrentDelta =
-    Number(compositeSignal.actualConcurrentCount || 0) - Number(compositeSignal.expectedConcurrentCount || 0)
-  const weekdayDelta =
-    Number(weekdaySignal.currentRolling24hCount || 0) - Number(weekdaySignal.baselineMean || 0)
-  const yearAgoDelta = yearAgoSignal?.deltaCount
-  const sameTimeDelta =
-    Number(compositeSignal.actualConcurrentCount || 0) - Number(timeOfDaySignal?.concurrentMean || 0)
-  const rollingSummaryCopy =
-    "The expected concurrent count combines the same date last year, recent matching weekdays, and the recent time-of-day pattern. The weekday estimate is based on the last 365 UTC days of airborne counts."
-  const rollingSummaryMetrics = [
-    {
-      value: formatDelta(concurrentDelta),
-      note: 'Difference between the observed concurrent count and the model estimate.',
-    },
-    {
-      value: formatDelta(weekdayDelta),
-      note: `Difference from the ${weekdayWindowLabel.toLowerCase()} rolling mean.`,
-    },
-    {
-      value: yearAgoDelta != null ? formatDelta(yearAgoDelta) : 'n/a',
-      note:
-        yearAgoSignal?.percentChange != null
-          ? `${formatSignedPercent(yearAgoSignal.percentChange)} relative to the nearest sample one year earlier.`
-          : 'No comparable year-ago sample is available.',
-    },
-    {
-      value: formatDelta(sameTimeDelta),
-      note:
-        timeOfDaySignal?.sampleCount
-          ? `Based on ${formatCount(timeOfDaySignal.sampleCount)} same-time samples from the last week.`
-          : 'No recent same-time samples are available.',
-    },
-  ]
 
   return (
-    <main className="app-shell">
-      {dashboard.warning ? (
-        <section className="status-banner">
-          <strong>{dashboard.mode === 'demo' ? 'Demo mode.' : 'Configuration required.'}</strong>
-          <span>{dashboard.warning}</span>
-        </section>
-      ) : null}
-
-      {!dashboard.warning && !liveStatus?.latestSampledAt ? (
-        <section className="status-banner">
-          <strong>No recent sweep.</strong>
-          <span>The backend polls the newest heatmap every 30 minutes and serves the latest cached sample.</span>
-        </section>
-      ) : null}
-
-      {liveStatus?.lastError ? (
-        <section className="status-banner">
-          <strong>Refresh error.</strong>
-          <span>
-            {liveStatus.lastError}
-            {liveStatus.nextRefreshAt ? ` Next sweep: ${formatTimestamp(liveStatus.nextRefreshAt)}.` : ''}
-          </span>
-        </section>
-      ) : null}
-
-      <section className="focus-grid">
-        <section className="panel hero-copy-panel">
-          <h1>Billionaire Evacuation Index</h1>
-          <img
-            className="hero-professor-image"
-            src={apocalypseOcean}
-            alt="Tropical shoreline with a distant mushroom cloud"
-          />
-          <p className="hero-copy">
-            This dashboard tracks a cohort of private aircraft and compares current airborne activity against recent
-            historical baselines.
-          </p>
-          <p className="hero-caption">
-            The current estimate combines year-over-year, weekday, and time-of-day comparisons.
-          </p>
-        </section>
-        <div className="dial-stack">
-          <EmergencySummary
-            title="Current Assessment"
-            signal={compositeSignal}
-            latestSweep={formatTimestamp(dashboard.current?.asOf)}
-            actualCount={compositeSignal.actualConcurrentCount}
-            expectedCount={compositeSignal.expectedConcurrentCount}
-            trackedCount={dashboard.cohort?.trackedCount ?? dashboard.watchlist?.trackedCount}
-          />
-        </div>
-      </section>
-
-      <section className="focus-map-grid">
-        <GlobalMap aircraft={liveAircraft} />
-      </section>
-
-      <section className="details-stack">
-        <RollingChart data={rollingData} summaryCopy={rollingSummaryCopy} summaryMetrics={rollingSummaryMetrics} />
-        <DailyChart data={modeledDailyData} />
-        <ModelSummaryList aircraft={liveAircraft} />
-      </section>
-    </main>
+    <>
+      <div className="background-wallpaper" style={{ backgroundImage: `url("${BACKGROUND_URL}")` }} aria-hidden="true" />
+      {content}
+    </>
   )
 }
 
