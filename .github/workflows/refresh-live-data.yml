@@ -11,7 +11,7 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  WRANGLER_OAUTH_CONFIG: ${{ secrets.WRANGLER_OAUTH_CONFIG }}
   PUBLIC_BUCKET: billionaire-evacuation-index-public
   STATE_BUCKET: billionaire-evacuation-index-state
 
@@ -44,6 +44,11 @@ jobs:
         run: |
           npm ci
           pip install -r requirements.txt
+
+      - name: Configure Wrangler OAuth
+        run: |
+          mkdir -p "$HOME/.config/.wrangler/config"
+          printf '%s' "$WRANGLER_OAUTH_CONFIG" > "$HOME/.config/.wrangler/config/default.toml"
 
       - name: Restore deployment state
         run: |
