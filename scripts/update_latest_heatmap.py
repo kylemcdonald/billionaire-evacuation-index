@@ -18,6 +18,7 @@ DB_PATH = DATA_DIR / "ews.sqlite"
 SCHEMA_PATH = ROOT_DIR / "schema.sql"
 LIVE_CACHE_DIR = DATA_DIR / "cache" / "adsbx_live"
 SOURCE = "adsbx_heatmap"
+HEATMAP_STATUS_META_KEY = "adsbx_heatmap_status"
 META_SLOT_KEY = "adsbx_heatmap_slot_key"
 META_SAMPLED_AT = "adsbx_heatmap_sampled_at"
 META_URL = "adsbx_heatmap_url"
@@ -491,6 +492,31 @@ def main():
         set_meta(connection, META_SAMPLED_AT, latest_result["sampled_at"])
         set_meta(connection, META_URL, selected["url"])
         set_meta(connection, META_CACHE_PATH, str(selected["cache_path"]))
+        set_meta(
+            connection,
+            HEATMAP_STATUS_META_KEY,
+            json.dumps(
+                {
+                    "provider": SOURCE,
+                    "providerLabel": "ADS-B Exchange heatmap",
+                    "cadenceMinutes": 30,
+                    "refreshing": False,
+                    "nextRefreshAt": None,
+                    "lastAttemptAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "lastSuccessAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "lastError": None,
+                    "latestSampledAt": latest_result["sampled_at"],
+                    "latestSlotKey": selected["slot_key"],
+                    "latestUrl": selected["url"],
+                    "cachePath": str(selected["cache_path"]),
+                    "usedCache": selected_used_cache,
+                    "matchedCount": latest_result["matched_count"],
+                    "airborneCount": latest_result["airborne_count"],
+                    "concurrentCount": latest_result["concurrent_count"],
+                    "rolling24hCount": latest_result["rolling_24h_count"],
+                }
+            ),
+        )
         connection.commit()
 
         print(

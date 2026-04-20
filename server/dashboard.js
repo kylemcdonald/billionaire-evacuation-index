@@ -562,6 +562,10 @@ function buildStoredHeatmapStatus(overrides = {}) {
     airborneCount: null,
     concurrentCount: null,
     ...savedStatus,
+    latestSampledAt: getMetaValue(META_SAMPLED_AT),
+    latestSlotKey: getMetaValue(META_SLOT_KEY),
+    latestUrl: getMetaValue(META_URL),
+    cachePath: getMetaValue(META_CACHE_PATH),
     ...overrides,
   };
 }
