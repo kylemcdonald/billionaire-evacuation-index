@@ -98,3 +98,19 @@ The public deployment can run with:
 - GitHub Actions for the scheduled refresh jobs
 
 The repository includes scheduled workflows in `.github/workflows/refresh-live-data.yml` and `.github/workflows/refresh-daily-history.yml` for that setup.
+
+### Cloudflare credentials
+
+Do not use `wrangler login` output or a copied `WRANGLER_OAUTH_CONFIG` secret in GitHub Actions. That is interactive user login state and can stop refreshing. The workflows use `CLOUDFLARE_API_TOKEN` instead.
+
+For a durable setup, create an account-owned Cloudflare API token in `Manage Account > Account API Tokens`, with no expiration date and no IP address restriction. Add it to GitHub as the repository secret `CLOUDFLARE_API_TOKEN`, alongside `CLOUDFLARE_ACCOUNT_ID`.
+
+Required account permissions for this repo:
+
+- `Cloudflare Pages: Edit`
+- `Workers R2 Storage: Edit`
+- `Account Settings: Read`
+- `User Details: Read`
+- `User Memberships: Read`
+
+After replacing the secret, rerun the `Deploy Pages` workflow. The old `WRANGLER_OAUTH_CONFIG` repository secret is no longer used by these workflows.
