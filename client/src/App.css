@@ -231,14 +231,16 @@
 
 .map-marker-halo {
   fill: rgba(0, 0, 255, 0.08);
-  stroke: rgba(0, 0, 255, 0.28);
+  stroke: none;
   animation: pulse 2.1s ease-in-out infinite;
 }
 
-.map-marker-core {
+.map-marker-plane {
   fill: #0000ee;
   stroke: #ffffff;
-  stroke-width: 1.5;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .map-marker {
@@ -252,9 +254,9 @@
   pointer-events: all;
 }
 
-.map-marker:hover .map-marker-core,
-.map-marker:focus-visible .map-marker-core,
-.map-marker-active .map-marker-core {
+.map-marker:hover .map-marker-plane,
+.map-marker:focus-visible .map-marker-plane,
+.map-marker-active .map-marker-plane {
   fill: #cc0000;
 }
 
@@ -262,11 +264,10 @@
 .map-marker:focus-visible .map-marker-halo,
 .map-marker-active .map-marker-halo {
   fill: rgba(204, 0, 0, 0.1);
-  stroke: rgba(204, 0, 0, 0.3);
 }
 
-.map-marker-touch .map-marker-core {
-  stroke-width: 2;
+.map-marker-touch .map-marker-plane {
+  stroke-width: 1.4;
 }
 
 .provider-toggle-group {

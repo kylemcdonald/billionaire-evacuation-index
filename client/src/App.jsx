@@ -9,6 +9,7 @@ const DASHBOARD_CACHE_BUSTER_MINUTES = 5
 const DASHBOARD_POLL_INTERVAL_MS = 5 * 60_000
 const MAP_WIDTH = 800
 const MAP_HEIGHT = 410
+const AIRCRAFT_MARKER_PATH = 'M0 -9 L2.2 -1.5 L8 1.2 L8 3.4 L1.8 2.1 L1.8 6.4 L4.2 8 L4.2 9 L0 7.5 L-4.2 9 L-4.2 8 L-1.8 6.4 L-1.8 2.1 L-8 3.4 L-8 1.2 L-2.2 -1.5 Z'
 const ARCHIVE_DAY_MS = 24 * 60 * 60 * 1000
 const worldGeographies = feature(worldAtlas, worldAtlas.objects.countries).features
 
@@ -149,6 +150,55 @@ function normalizeModelLabel(value) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
+}
+
+function normalizeDegrees(value) {
+  if (!Number.isFinite(value)) {
+    return null
+  }
+
+  return ((value % 360) + 360) % 360
+}
+
+function getProjectedAircraftRotation(plane, projection) {
+  const path = Array.isArray(plane.path) ? [...plane.path] : []
+  const currentPosition = { lat: plane.lat, lon: plane.lon }
+  const latestPathPoint = path[path.length - 1]
+
+  if (
+    Number.isFinite(currentPosition.lat) &&
+    Number.isFinite(currentPosition.lon) &&
+    (!latestPathPoint ||
+      latestPathPoint.lat !== currentPosition.lat ||
+      latestPathPoint.lon !== currentPosition.lon)
+  ) {
+    path.push(currentPosition)
+  }
+
+  const projectedPath = path
+    .map((point) => {
+      if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) {
+        return null
+      }
+
+      return projection([point.lon, point.lat])
+    })
+    .filter(Boolean)
+
+  for (let index = projectedPath.length - 1; index > 0; index -= 1) {
+    const currentPoint = projectedPath[index]
+    const previousPoint = projectedPath[index - 1]
+    const deltaX = currentPoint[0] - previousPoint[0]
+    const deltaY = currentPoint[1] - previousPoint[1]
+
+    if (Math.hypot(deltaX, deltaY) < 0.5) {
+      continue
+    }
+
+    return normalizeDegrees((Math.atan2(deltaX, -deltaY) * 180) / Math.PI)
+  }
+
+  return normalizeDegrees(Number(plane.track))
 }
 
 function findFirstIndexAtOrAfter(values, target) {
@@ -863,9 +913,9 @@ function GlobalMap({ aircraft }) {
   const projection = isNarrowLayout ? createUnitedStatesProjection() : createWorldProjection()
   const path = geoPath(projection)
   const graticulePath = path(geoGraticule10())
-  const markerCoreRadius = isNarrowLayout ? 8.5 : 6.5
   const markerHaloRadius = isNarrowLayout ? 15 : 12
   const markerHitRadius = isNarrowLayout ? 24 : 16
+  const markerIconScale = isNarrowLayout ? 1.22 : 1
 
   function toggleActivePlane(planeHex) {
     setActivePlaneHex((currentHex) => (currentHex === planeHex ? null : planeHex))
@@ -980,8 +1030,10 @@ function GlobalMap({ aircraft }) {
                 aria-label={`${plane.label || plane.registration || plane.hex?.toUpperCase()} at ${formatAltitude(plane.altitudeFt)}, ${formatSpeed(plane.groundSpeedKt)}`}
               >
                 <circle r={markerHitRadius} className="map-marker-hit" />
-                <circle r={markerCoreRadius} className="map-marker-core" />
                 <circle r={markerHaloRadius} className="map-marker-halo" />
+                <g transform={`rotate(${getProjectedAircraftRotation(plane, projection) ?? 0}) scale(${markerIconScale})`}>
+                  <path d={AIRCRAFT_MARKER_PATH} className="map-marker-plane" />
+                </g>
                 <title>{`${plane.label} · ${formatAltitude(plane.altitudeFt)} · ${formatSpeed(plane.groundSpeedKt)}`}</title>
               </g>
             )

@@ -4,6 +4,7 @@ const { DB_PATH, SCHEMA_PATH, ensureDirectories } = require("./config");
 
 let database;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const AIRCRAFT_PATH_POINT_LIMIT = 6;
 
 function initDb() {
   if (database) {
@@ -320,9 +321,56 @@ function getConcurrentCount(liveSource = null) {
   return Number(row?.concurrent_count ?? 0);
 }
 
+function getLiveAircraftPathMap(db, hexes, liveSource = null) {
+  if (!hexes.length) {
+    return new Map();
+  }
+
+  const placeholders = hexes.map(() => "?").join(", ");
+  const rows = db
+    .prepare(`
+      SELECT
+        hex,
+        observed_at AS observedAt,
+        lat,
+        lon
+      FROM (
+        SELECT
+          hex,
+          observed_at,
+          lat,
+          lon,
+          ROW_NUMBER() OVER (PARTITION BY hex ORDER BY observed_at DESC) AS path_rank
+        FROM observations
+        WHERE source != 'demo'
+          AND (? IS NULL OR source = ?)
+          AND hex IN (${placeholders})
+          AND is_airborne = 1
+          AND lat IS NOT NULL
+          AND lon IS NOT NULL
+      )
+      WHERE path_rank <= ?
+      ORDER BY hex ASC, observed_at ASC
+    `)
+    .all(liveSource, liveSource, ...hexes, AIRCRAFT_PATH_POINT_LIMIT);
+
+  const pathsByHex = new Map();
+  for (const row of rows) {
+    const path = pathsByHex.get(row.hex) || [];
+    path.push({
+      observedAt: row.observedAt,
+      lat: Number(row.lat),
+      lon: Number(row.lon),
+    });
+    pathsByHex.set(row.hex, path);
+  }
+
+  return pathsByHex;
+}
+
 function getLiveAircraft(liveSource = null) {
   const db = getDb();
-  return db
+  const rows = db
     .prepare(`
       SELECT
         hex,
@@ -343,11 +391,19 @@ function getLiveAircraft(liveSource = null) {
         AND lon IS NOT NULL
       ORDER BY observed_at DESC, label ASC
     `)
-    .all(liveSource, liveSource)
-    .map((row) => ({
-      ...row,
-      isAirborne: Boolean(row.isAirborne),
-    }));
+    .all(liveSource, liveSource);
+  const pathsByHex = getLiveAircraftPathMap(
+    db,
+    rows.map((row) => row.hex),
+    liveSource,
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    track: row.track == null ? null : Number(row.track),
+    isAirborne: Boolean(row.isAirborne),
+    path: pathsByHex.get(row.hex) || [],
+  }));
 }
 
 function getRecentDailyMetrics(limit = 365) {
