@@ -18,6 +18,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  PUBLIC_BUCKET: billionaire-evacuation-index-public
 
 concurrency:
   group: deploy-pages
@@ -40,6 +41,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Apply public snapshot CORS
+        run: npx wrangler r2 bucket cors set "${PUBLIC_BUCKET}" --file config/r2.public.cors.json
 
       - name: Build client
         run: npm run build

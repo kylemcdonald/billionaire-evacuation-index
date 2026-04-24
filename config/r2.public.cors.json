@@ -2,7 +2,7 @@
   "rules": [
     {
       "allowed": {
-        "origins": ["https://billionaire-evacuation-index.pages.dev", "http://localhost:5173"],
+        "origins": ["*"],
         "methods": ["GET", "HEAD"]
       }
     }
