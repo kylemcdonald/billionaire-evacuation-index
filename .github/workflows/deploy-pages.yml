@@ -17,7 +17,7 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  WRANGLER_OAUTH_CONFIG: ${{ secrets.WRANGLER_OAUTH_CONFIG }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
 concurrency:
   group: deploy-pages
@@ -41,13 +41,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Configure Wrangler OAuth
-        run: |
-          mkdir -p "$HOME/.config/.wrangler/config"
-          printf '%s' "$WRANGLER_OAUTH_CONFIG" > "$HOME/.config/.wrangler/config/default.toml"
-
       - name: Build client
         run: npm run build
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler@4.84.0 pages deploy client/dist --project-name billionaire-evacuation-index --branch main --commit-hash "$GITHUB_SHA"
+        run: npx wrangler pages deploy client/dist --project-name billionaire-evacuation-index --branch main --commit-hash "$GITHUB_SHA"
