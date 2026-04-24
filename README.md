@@ -105,12 +105,12 @@ Do not use `wrangler login` output or a copied `WRANGLER_OAUTH_CONFIG` secret in
 
 For a durable setup, create an account-owned Cloudflare API token in `Manage Account > Account API Tokens`, with no expiration date and no IP address restriction. Add it to GitHub as the repository secret `CLOUDFLARE_API_TOKEN`, alongside `CLOUDFLARE_ACCOUNT_ID`.
 
-Required account permissions for this repo:
+Required account-owned token permissions for this repo:
 
 - `Cloudflare Pages: Edit`
 - `Workers R2 Storage: Edit`
 - `Account Settings: Read`
-- `User Details: Read`
-- `User Memberships: Read`
+
+If you use a user-owned API token instead of an account-owned token, also include `User Details: Read` and `User Memberships: Read`. Account-owned tokens are preferred here because they act as CI service credentials rather than as copied user session state.
 
 After replacing the secret, rerun the `Deploy Pages` workflow. The old `WRANGLER_OAUTH_CONFIG` repository secret is no longer used by these workflows.
