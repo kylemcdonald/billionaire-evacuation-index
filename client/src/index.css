@@ -30,7 +30,7 @@ body {
   margin: 0 auto;
   min-height: 100svh;
   box-sizing: border-box;
-  padding: 64px 8px 24px;
+  padding: 8px 8px 24px;
 }
 
 h1 {
@@ -90,6 +90,6 @@ button {
 
 @media (max-width: 720px) {
   #root {
-    padding: 64px 4px 18px;
+    padding: 4px 4px 18px;
   }
 }

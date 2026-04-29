@@ -27,7 +27,6 @@ const ARCHIVE_CHART_HEIGHT = 320
 const ARCHIVE_DIVERGENCE_HEIGHT = 180
 const ARCHIVE_CHART_MARGIN = { top: 16, right: 18, bottom: 28, left: 44 }
 const ARCHIVE_CHART_MOBILE_MARGIN = { top: 18, right: 16, bottom: 42, left: 54 }
-const ARCHIVE_FULL_WINDOW_DAYS = Number.POSITIVE_INFINITY
 const EMERGENCY_LEVEL_COUNT = 5
 const AIRCRAFT_MODEL_DETAIL_RANK_LIMIT = 40
 const AIRCRAFT_MODEL_WIKIPEDIA_URLS = new Map([
@@ -996,7 +995,7 @@ function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
   const sliderValue = maxEndDaysAgo - clampedEndDaysAgo
   const sliderPercent = maxEndDaysAgo > 0 ? (sliderValue / maxEndDaysAgo) * 100 : 100
   const isLongWindow = effectiveWindowDays >= 30
-  const isDenseWindow = archiveWindowDays === 90 || archiveWindowDays === ARCHIVE_FULL_WINDOW_DAYS
+  const isDenseWindow = archiveWindowDays >= 28
   const primaryLineWidth = isDenseWindow ? 1.45 : 2.5
   const secondaryLineWidth = isDenseWindow ? 1.15 : 2
   const referenceLineWidth = isDenseWindow ? 0.75 : 1
@@ -1097,28 +1096,19 @@ function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={archiveWindowDays === 30}
-              onChange={() => setArchiveWindowDays(30)}
+              checked={archiveWindowDays === 7}
+              onChange={() => setArchiveWindowDays(7)}
             />
-            <span>30D</span>
+            <span>1 week</span>
           </label>
           <label className="chart-radio-option">
             <input
               type="radio"
               name="archive-window"
-              checked={archiveWindowDays === 90}
-              onChange={() => setArchiveWindowDays(90)}
+              checked={archiveWindowDays === 28}
+              onChange={() => setArchiveWindowDays(28)}
             />
-            <span>90D</span>
-          </label>
-          <label className="chart-radio-option">
-            <input
-              type="radio"
-              name="archive-window"
-              checked={archiveWindowDays === ARCHIVE_FULL_WINDOW_DAYS}
-              onChange={() => setArchiveWindowDays(ARCHIVE_FULL_WINDOW_DAYS)}
-            />
-            <span>Full Year</span>
+            <span>1 month</span>
           </label>
         </fieldset>
       </div>
@@ -1596,9 +1586,6 @@ function App() {
         <section className="focus-grid">
           <section className="panel hero-copy-panel">
             <h1>Apocalypse Early Warning System</h1>
-            <p className="hero-copy">
-              Private jet activity monitor
-            </p>
             <p className="hero-caption">
               In the event of an imminent nuclear apocalypse, we suspect that many people who have access to private jets
               will immediately take to the skies and escape city centers. This site tracks this indicator in realtime.
