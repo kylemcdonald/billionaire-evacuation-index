@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#ffd400"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-label="Radiation warning icon">
+  <rect width="64" height="64" rx="10" fill="#ffd400"/>
   <circle cx="32" cy="32" r="27" fill="#ffd400" stroke="#000" stroke-width="4"/>
-  <path fill="#000" d="M32 6a26 26 0 0 1 12.6 3.3L36.5 24a9.3 9.3 0 0 0-9 0L19.4 9.3A26 26 0 0 1 32 6Zm22.5 39a26 26 0 0 1-22.3 13l.1-16.8a9.3 9.3 0 0 0 7.8-4.5L54.5 45ZM9.5 45l14.4-8.3a9.3 9.3 0 0 0 7.8 4.5l.1 16.8A26 26 0 0 1 9.5 45Z"/>
-  <circle cx="32" cy="32" r="8" fill="#ffd400" stroke="#000" stroke-width="4"/>
-  <circle cx="32" cy="32" r="3.2" fill="#000"/>
+  <path fill="#000" d="M19 9.48A26 26 0 0 1 45 9.48L37 23.34A10 10 0 0 0 27 23.34Z"/>
+  <path fill="#000" d="M58 32A26 26 0 0 1 45 54.52L37 40.66A10 10 0 0 0 42 32Z"/>
+  <path fill="#000" d="M19 54.52A26 26 0 0 1 6 32H22A10 10 0 0 0 27 40.66Z"/>
+  <circle cx="32" cy="32" r="6.5" fill="#000"/>
 </svg>
