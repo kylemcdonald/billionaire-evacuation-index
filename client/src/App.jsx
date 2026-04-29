@@ -1600,8 +1600,8 @@ function App() {
               Private jet activity monitor
             </p>
             <p className="hero-caption">
-              This dashboard tracks a cohort of private aircraft and compares current airborne activity against recent
-              historical baselines.
+              In the event of an imminent nuclear apocalypse, we suspect that many people who have access to private jets
+              will immediately take to the skies and escape city centers. This site tracks this indicator in realtime.
             </p>
           </section>
           <div className="dial-stack">
