@@ -980,6 +980,25 @@ function ArchiveChart({ data, signal }) {
   return <ArchiveChartPanel key={`archive-${archiveData.length}`} data={archiveData} signal={signal} defaultWindowDays={3} />
 }
 
+function getArchivePositionSnapDays(windowDays) {
+  if (windowDays >= 28) {
+    return 28
+  }
+
+  if (windowDays >= 7) {
+    return 7
+  }
+
+  return 1
+}
+
+function snapArchiveEndDaysAgo(value, snapDays, maxEndDaysAgo) {
+  const maxAlignedEndDaysAgo = Math.floor(maxEndDaysAgo / snapDays) * snapDays
+  const snappedEndDaysAgo = Math.round(value / snapDays) * snapDays
+
+  return clamp(snappedEndDaysAgo, 0, maxAlignedEndDaysAgo)
+}
+
 function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
   const hasData = data.length > 0
   const sampledAtTimestamps = useMemo(() => data.map((sample) => Date.parse(sample.sampledAt || 0)), [data])
@@ -990,11 +1009,14 @@ function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
   const [endDaysAgo, setEndDaysAgo] = useState(0)
   const effectiveWindowDays = clamp(archiveWindowDays, 1, maxDaysAvailable)
   const maxEndDaysAgo = Math.max(0, maxDaysAvailable - effectiveWindowDays)
-  const clampedEndDaysAgo = clamp(endDaysAgo, 0, maxEndDaysAgo)
+  const archivePositionSnapDays = getArchivePositionSnapDays(archiveWindowDays)
+  const clampedEndDaysAgo = snapArchiveEndDaysAgo(endDaysAgo, archivePositionSnapDays, maxEndDaysAgo)
+  const maxArchivePositionStep = Math.floor(maxEndDaysAgo / archivePositionSnapDays)
+  const currentArchivePositionStep = Math.round(clampedEndDaysAgo / archivePositionSnapDays)
   const startDaysAgo = clampedEndDaysAgo + effectiveWindowDays
-  const sliderValue = maxEndDaysAgo - clampedEndDaysAgo
-  const sliderPercent = maxEndDaysAgo > 0 ? (sliderValue / maxEndDaysAgo) * 100 : 100
-  const isLongWindow = effectiveWindowDays >= 30
+  const sliderValue = maxArchivePositionStep - currentArchivePositionStep
+  const sliderPercent = maxArchivePositionStep > 0 ? (sliderValue / maxArchivePositionStep) * 100 : 100
+  const isLongWindow = effectiveWindowDays >= 28
   const isDenseWindow = archiveWindowDays >= 28
   const primaryLineWidth = isDenseWindow ? 1.45 : 2.5
   const secondaryLineWidth = isDenseWindow ? 1.15 : 2
@@ -1002,12 +1024,15 @@ function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
 
   function setArchiveWindowDays(nextWindowDays) {
     const nextWindowDaysClamped = clamp(nextWindowDays, 1, maxDaysAvailable)
+    const nextMaxEndDaysAgo = Math.max(0, maxDaysAvailable - nextWindowDaysClamped)
+    const nextSnapDays = getArchivePositionSnapDays(nextWindowDays)
+
     setArchiveWindowDaysState(nextWindowDays)
-    setEndDaysAgo((currentEndDaysAgo) => clamp(currentEndDaysAgo, 0, Math.max(0, maxDaysAvailable - nextWindowDaysClamped)))
+    setEndDaysAgo((currentEndDaysAgo) => snapArchiveEndDaysAgo(currentEndDaysAgo, nextSnapDays, nextMaxEndDaysAgo))
   }
 
   function setArchivePosition(nextSliderValue) {
-    setEndDaysAgo(clamp(maxEndDaysAgo - nextSliderValue, 0, maxEndDaysAgo))
+    setEndDaysAgo((maxArchivePositionStep - nextSliderValue) * archivePositionSnapDays)
   }
 
   const visibleWindowDays = effectiveWindowDays
@@ -1070,12 +1095,13 @@ function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
               className="chart-range-input"
               type="range"
               min="0"
-              max={maxEndDaysAgo}
+              max={maxArchivePositionStep}
               step="1"
               value={sliderValue}
               onChange={(event) => setArchivePosition(Number(event.target.value))}
-              disabled={maxEndDaysAgo === 0}
+              disabled={maxArchivePositionStep === 0}
               aria-label="Archive position"
+              aria-valuetext={clampedEndDaysAgo === 0 ? 'Now' : `${clampedEndDaysAgo} days before now`}
             />
           </div>
         </div>
