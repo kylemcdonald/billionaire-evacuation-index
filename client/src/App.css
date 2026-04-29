@@ -128,7 +128,7 @@
   z-index: 20;
   display: grid;
   place-items: center;
-  background: rgb(221, 218, 210);
+  background: rgb(219, 212, 204);
 }
 
 .loading-animation {
