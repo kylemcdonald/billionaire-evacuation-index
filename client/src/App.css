@@ -73,7 +73,6 @@
 .flight-list span,
 .empty-state,
 .map-hover-header span,
-.map-hover-empty span,
 .map-hover-grid dt {
   color: #000000;
 }
@@ -85,6 +84,7 @@
 .map-panel,
 .list-panel,
 .summary-panel,
+.about-panel,
 .loading-panel,
 .error-panel,
 .provider-panel {
@@ -127,6 +127,48 @@
   gap: 16px;
 }
 
+.dial-panel {
+  background: var(--emergency-bg, #ffffff);
+  border-color: var(--emergency-border, var(--panel-border));
+  color: var(--emergency-text, #000000);
+}
+
+.dial-panel .panel-header h2,
+.dial-panel .summary-text-block,
+.dial-panel .summary-text-block strong {
+  color: inherit;
+}
+
+.dial-panel.emergency-level-1 {
+  --emergency-bg: #ffffff;
+  --emergency-border: #999999;
+  --emergency-text: #000000;
+}
+
+.dial-panel.emergency-level-2 {
+  --emergency-bg: #fff7c2;
+  --emergency-border: #d4b446;
+  --emergency-text: #000000;
+}
+
+.dial-panel.emergency-level-3 {
+  --emergency-bg: #ffd84d;
+  --emergency-border: #b98500;
+  --emergency-text: #000000;
+}
+
+.dial-panel.emergency-level-4 {
+  --emergency-bg: #f28c28;
+  --emergency-border: #9f4f00;
+  --emergency-text: #000000;
+}
+
+.dial-panel.emergency-level-5 {
+  --emergency-bg: #b91c1c;
+  --emergency-border: #7f1d1d;
+  --emergency-text: #ffffff;
+}
+
 .provider-toggle:hover:not(:disabled) {
   background: #e5e5e5;
 }
@@ -136,14 +178,35 @@
   outline-offset: 2px;
 }
 
-.emergency-line {
-  margin-bottom: 10px;
-}
-
 .summary-text-block {
   display: grid;
   gap: 4px;
   margin-top: 10px;
+}
+
+.summary-count-line {
+  line-height: 1.35;
+}
+
+.summary-inline-icon {
+  display: inline-block;
+  width: 0.96em;
+  height: 0.96em;
+  margin-left: 2px;
+  margin-right: 2px;
+  vertical-align: -0.12em;
+}
+
+.summary-airplane-icon {
+  fill: currentColor;
+}
+
+.summary-person-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .summary-text-block p:last-child {
@@ -177,7 +240,6 @@
 }
 
 .map-hover-header,
-.map-hover-empty,
 .map-hover-grid div,
 .chart-range-copy,
 .chart-subsection-header {
@@ -186,7 +248,6 @@
 }
 
 .map-hover-header strong,
-.map-hover-empty strong,
 .map-hover-grid dd,
 .chart-range-copy strong,
 .chart-subsection-header strong,
@@ -395,9 +456,13 @@
   width: 100%;
   margin: 0;
   background: transparent;
-  pointer-events: none;
+  pointer-events: auto;
   appearance: none;
   -webkit-appearance: none;
+}
+
+.chart-range-input:disabled {
+  cursor: not-allowed;
 }
 
 .chart-range-input::-webkit-slider-runnable-track {
@@ -446,6 +511,28 @@
   display: block;
   width: 100%;
   height: auto;
+}
+
+.about-copy {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  max-width: 78ch;
+}
+
+.about-copy p {
+  margin: 0;
+}
+
+.about-copy a {
+  color: #000000;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.about-credit {
+  padding-top: 2px;
+  font-weight: 700;
 }
 
 .archive-chart-tooltip {
@@ -540,8 +627,80 @@
   display: block;
 }
 
-.flight-list li div:last-child {
+.flight-list:not(.model-list) li div:last-child {
   text-align: right;
+}
+
+.model-name-cell {
+  min-width: 0;
+}
+
+.model-name-cell > strong {
+  overflow-wrap: anywhere;
+}
+
+.model-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.model-wiki-link {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 5px;
+  color: #000000;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.model-wiki-link strong {
+  display: inline;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.model-external-icon {
+  width: 0.82em;
+  height: 0.82em;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.flight-list .model-passenger-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border: 1px solid #b8b8b8;
+  background: #f7f7f7;
+  color: #000000;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.flight-list .model-passenger-label span {
+  display: inline;
+}
+
+.model-person-icon {
+  width: 0.86em;
+  height: 0.86em;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .model-count {
@@ -613,6 +772,7 @@
   .map-panel,
   .list-panel,
   .summary-panel,
+  .about-panel,
   .loading-panel,
   .error-panel,
   .provider-panel {
@@ -636,7 +796,7 @@
   }
 
   .map-svg-narrow {
-    min-height: 300px;
+    min-height: 340px;
   }
 
   .flight-list li,
@@ -644,7 +804,19 @@
     grid-template-columns: 1fr;
   }
 
-  .flight-list li div:last-child {
+  .model-list li {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .model-count {
+    min-width: 2.5ch;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .flight-list:not(.model-list) li div:last-child {
     text-align: left;
   }
 }

@@ -18,12 +18,104 @@ const CHART_TICK_COLOR = '#000000'
 const CHART_GRID_COLOR = '#d4d4d4'
 const CHART_PRIMARY_COLOR = '#0000ee'
 const CHART_SECONDARY_COLOR = '#808080'
+const CHART_LONG_WINDOW_SECONDARY_COLOR = 'rgba(128, 128, 128, 0.48)'
 const WORLD_FEATURE_COLLECTION = { type: 'FeatureCollection', features: worldGeographies }
 const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.png'
 const ARCHIVE_CHART_WIDTH = 960
+const ARCHIVE_CHART_MOBILE_WIDTH = 440
 const ARCHIVE_CHART_HEIGHT = 320
 const ARCHIVE_DIVERGENCE_HEIGHT = 180
 const ARCHIVE_CHART_MARGIN = { top: 16, right: 18, bottom: 28, left: 44 }
+const ARCHIVE_CHART_MOBILE_MARGIN = { top: 18, right: 16, bottom: 42, left: 54 }
+const ARCHIVE_FULL_WINDOW_DAYS = Number.POSITIVE_INFINITY
+const EMERGENCY_LEVEL_COUNT = 5
+const AIRCRAFT_MODEL_DETAIL_RANK_LIMIT = 40
+const AIRCRAFT_MODEL_WIKIPEDIA_URLS = new Map([
+  ['BOMBARDIER AEROSPACE INC BD-100-1A10', 'https://en.wikipedia.org/wiki/Bombardier_Challenger_300'],
+  ['BOMBARDIER INC BD-100-1A10', 'https://en.wikipedia.org/wiki/Bombardier_Challenger_300'],
+  ['EMBRAER EXECUTIVE AIRCRAFT INC EMB-505', 'https://en.wikipedia.org/wiki/Embraer_Phenom_300'],
+  ['TEXTRON AVIATION INC 680A', 'https://en.wikipedia.org/wiki/Cessna_Citation_Latitude'],
+  ['CESSNA 560XL', 'https://en.wikipedia.org/wiki/Cessna_Citation_Excel'],
+  ['TEXTRON AVIATION INC 560XL', 'https://en.wikipedia.org/wiki/Cessna_Citation_Excel'],
+  ['LEARJET INC 45', 'https://en.wikipedia.org/wiki/Learjet_45'],
+  ['CESSNA 560', 'https://en.wikipedia.org/wiki/Cessna_Citation_V'],
+  ['CESSNA 525B', 'https://en.wikipedia.org/wiki/Cessna_CitationJet/M2'],
+  ['TEXTRON AVIATION INC 525B', 'https://en.wikipedia.org/wiki/Cessna_CitationJet/M2'],
+  ['CESSNA 525A', 'https://en.wikipedia.org/wiki/Cessna_CitationJet/M2'],
+  ['CESSNA 525', 'https://en.wikipedia.org/wiki/Cessna_CitationJet/M2'],
+  ['TEXTRON AVIATION INC 525', 'https://en.wikipedia.org/wiki/Cessna_CitationJet/M2'],
+  ['CESSNA 680', 'https://en.wikipedia.org/wiki/Cessna_Citation_Sovereign'],
+  ['GULFSTREAM AEROSPACE GV-SP (G550)', 'https://en.wikipedia.org/wiki/Gulfstream_G550'],
+  ['LEARJET INC 60', 'https://en.wikipedia.org/wiki/Learjet_60'],
+  ['RAYTHEON AIRCRAFT COMPANY HAWKER 800XP', 'https://en.wikipedia.org/wiki/Hawker_800'],
+  ['CESSNA 510', 'https://en.wikipedia.org/wiki/Cessna_Citation_Mustang'],
+  ['CESSNA 550', 'https://en.wikipedia.org/wiki/Cessna_Citation_II'],
+  ['DASSAULT AVIATION FALCON 2000EX', 'https://en.wikipedia.org/wiki/Dassault_Falcon_2000'],
+  ['CESSNA 650', 'https://en.wikipedia.org/wiki/Cessna_Citation_III'],
+  ['RAYTHEON AIRCRAFT COMPANY 400A', 'https://en.wikipedia.org/wiki/Hawker_400'],
+  ['PILATUS AIRCRAFT LTD PC-24', 'https://en.wikipedia.org/wiki/Pilatus_PC-24'],
+  ['TEXTRON AVIATION INC 525C', 'https://en.wikipedia.org/wiki/Cessna_CitationJet/M2'],
+  ['GULFSTREAM AEROSPACE CORP GVII-G600', 'https://en.wikipedia.org/wiki/Gulfstream_G500/G600'],
+  ['HAWKER BEECHCRAFT CORP HAWKER 900XP', 'https://en.wikipedia.org/wiki/Hawker_800'],
+  ['CESSNA 501', 'https://en.wikipedia.org/wiki/Cessna_Citation_I'],
+  ['DASSAULT AVIATION FALCON 7X', 'https://en.wikipedia.org/wiki/Dassault_Falcon_7X'],
+  ['HONDA AIRCRAFT CO LLC HA-420', 'https://en.wikipedia.org/wiki/Honda_HA-420_HondaJet'],
+  ['LEARJET INC 31A', 'https://en.wikipedia.org/wiki/Learjet_31'],
+  ['RAYTHEON AIRCRAFT COMPANY 390', 'https://en.wikipedia.org/wiki/Beechcraft_Premier_I'],
+  ['CESSNA AIRCRAFT CO 560XLS', 'https://en.wikipedia.org/wiki/Cessna_Citation_Excel'],
+  ['DASSAULT AVIATION FALCON 2000', 'https://en.wikipedia.org/wiki/Dassault_Falcon_2000'],
+  ['DASSAULT FALCON 2000EX', 'https://en.wikipedia.org/wiki/Dassault_Falcon_2000'],
+  ['GULFSTREAM AEROSPACE G-V', 'https://en.wikipedia.org/wiki/Gulfstream_V'],
+  ['HAWKER BEECHCRAFT CORP 390', 'https://en.wikipedia.org/wiki/Beechcraft_Premier_I'],
+  ['DASSAULT-BREGUET FALCON 10', 'https://en.wikipedia.org/wiki/Dassault_Falcon_10'],
+  ['DASSAULT-BREGUET FALCON 50', 'https://en.wikipedia.org/wiki/Dassault_Falcon_50'],
+  ['ECLIPSE AVIATION CORP EA500', 'https://en.wikipedia.org/wiki/Eclipse_500'],
+  ['EMBRAER EXECUTIVE AIRCRAFT INC EMB-500', 'https://en.wikipedia.org/wiki/Embraer_Phenom_100'],
+  ['GATES LEARJET CORP. 35A', 'https://en.wikipedia.org/wiki/Learjet_35'],
+])
+const AIRCRAFT_MODEL_MAX_PASSENGERS = new Map([
+  ['BOMBARDIER AEROSPACE INC BD-100-1A10', 10],
+  ['BOMBARDIER INC BD-100-1A10', 10],
+  ['EMBRAER EXECUTIVE AIRCRAFT INC EMB-505', 10],
+  ['TEXTRON AVIATION INC 680A', 9],
+  ['CESSNA 560XL', 10],
+  ['TEXTRON AVIATION INC 560XL', 10],
+  ['LEARJET INC 45', 9],
+  ['CESSNA 560', 9],
+  ['CESSNA 525B', 9],
+  ['TEXTRON AVIATION INC 525B', 9],
+  ['CESSNA 525A', 9],
+  ['CESSNA 525', 7],
+  ['TEXTRON AVIATION INC 525', 7],
+  ['CESSNA 680', 12],
+  ['GULFSTREAM AEROSPACE GV-SP (G550)', 19],
+  ['LEARJET INC 60', 10],
+  ['RAYTHEON AIRCRAFT COMPANY HAWKER 800XP', 9],
+  ['CESSNA 510', 5],
+  ['CESSNA 550', 8],
+  ['DASSAULT AVIATION FALCON 2000EX', 10],
+  ['CESSNA 650', 13],
+  ['RAYTHEON AIRCRAFT COMPANY 400A', 9],
+  ['PILATUS AIRCRAFT LTD PC-24', 10],
+  ['TEXTRON AVIATION INC 525C', 10],
+  ['GULFSTREAM AEROSPACE CORP GVII-G600', 19],
+  ['HAWKER BEECHCRAFT CORP HAWKER 900XP', 8],
+  ['CESSNA 501', 5],
+  ['DASSAULT AVIATION FALCON 7X', 16],
+  ['HONDA AIRCRAFT CO LLC HA-420', 7],
+  ['LEARJET INC 31A', 8],
+  ['RAYTHEON AIRCRAFT COMPANY 390', 7],
+  ['CESSNA AIRCRAFT CO 560XLS', 10],
+  ['DASSAULT AVIATION FALCON 2000', 10],
+  ['DASSAULT FALCON 2000EX', 10],
+  ['GULFSTREAM AEROSPACE G-V', 19],
+  ['HAWKER BEECHCRAFT CORP 390', 7],
+  ['DASSAULT-BREGUET FALCON 10', 7],
+  ['DASSAULT-BREGUET FALCON 50', 9],
+  ['ECLIPSE AVIATION CORP EA500', 5],
+  ['EMBRAER EXECUTIVE AIRCRAFT INC EMB-500', 7],
+  ['GATES LEARJET CORP. 35A', 8],
+])
 
 function formatCount(value) {
   return new Intl.NumberFormat().format(Math.round(value || 0))
@@ -146,6 +238,45 @@ function normalizeModelLabel(value) {
     .trim()
 
   return normalized || 'Unknown model'
+}
+
+function getAircraftModelWikipediaUrl(modelLabel) {
+  return AIRCRAFT_MODEL_WIKIPEDIA_URLS.get(normalizeModelLabel(modelLabel).toUpperCase()) || null
+}
+
+function getAircraftModelMaxPassengers(modelLabel) {
+  return AIRCRAFT_MODEL_MAX_PASSENGERS.get(normalizeModelLabel(modelLabel).toUpperCase()) || null
+}
+
+function estimateMaxSeatsAirborne(aircraft, totalAircraftCountOverride = null) {
+  const airborneAircraft = aircraft.filter((plane) => plane?.isAirborne !== false)
+  const totalAircraftCount = Number(totalAircraftCountOverride)
+  const scaledAircraftCount =
+    Number.isFinite(totalAircraftCount) && totalAircraftCount > 0
+      ? totalAircraftCount
+      : airborneAircraft.length
+  let knownAircraftCount = 0
+  let knownSeatCount = 0
+
+  for (const plane of airborneAircraft) {
+    const maxPassengers = getAircraftModelMaxPassengers(plane.label)
+    if (!Number.isFinite(maxPassengers)) {
+      continue
+    }
+
+    knownAircraftCount += 1
+    knownSeatCount += maxPassengers
+  }
+
+  if (!scaledAircraftCount || !knownAircraftCount) {
+    return null
+  }
+
+  return {
+    estimatedSeats: Math.round((knownSeatCount / knownAircraftCount) * scaledAircraftCount),
+    knownAircraftCount,
+    totalAircraftCount: scaledAircraftCount,
+  }
 }
 
 function clamp(value, min, max) {
@@ -357,6 +488,38 @@ function buildSvgAreaPath(data, xScale, yScale, accessor, baselineValue) {
   return path
 }
 
+function getContinuousEmergencyLevel(sigmaShift, alarmSigmaThreshold) {
+  const alarmSigma = Number(alarmSigmaThreshold)
+  if (!Number.isFinite(alarmSigma) || alarmSigma <= 0) {
+    return 1
+  }
+
+  const normalizedSigma = Math.max(0, Number(sigmaShift || 0))
+  return 1 + (normalizedSigma / alarmSigma) * (EMERGENCY_LEVEL_COUNT - 1)
+}
+
+function formatEmergencyLevel(value) {
+  if (!Number.isFinite(value)) {
+    return '1.0'
+  }
+
+  return value.toFixed(1)
+}
+
+function buildEmergencyLevelReferenceLines(strokeWidth) {
+  return Array.from({ length: EMERGENCY_LEVEL_COUNT }, (_, index) => {
+    const level = index + 1
+
+    return {
+      value: level,
+      label: String(level),
+      stroke: level === 1 ? '#666666' : '#8a8a8a',
+      strokeWidth,
+      opacity: level === 1 ? 0.68 : 0.44,
+    }
+  })
+}
+
 function ArchiveSvgChart({
   data,
   height,
@@ -365,8 +528,11 @@ function ArchiveSvgChart({
   lines = [],
   area = null,
   showZeroLine = false,
+  referenceLines = [],
+  yAxisTicks = null,
   tooltipFormatter,
 }) {
+  const isNarrowLayout = useIsNarrowLayout()
   const [hoverIndex, setHoverIndex] = useState(null)
 
   const chartState = useMemo(() => {
@@ -374,10 +540,12 @@ function ArchiveSvgChart({
       return null
     }
 
-    const width = ARCHIVE_CHART_WIDTH
-    const margin = ARCHIVE_CHART_MARGIN
+    const width = isNarrowLayout ? ARCHIVE_CHART_MOBILE_WIDTH : ARCHIVE_CHART_WIDTH
+    const resolvedHeight = isNarrowLayout ? Math.max(height, 230) : height
+    const margin = isNarrowLayout ? ARCHIVE_CHART_MOBILE_MARGIN : ARCHIVE_CHART_MARGIN
+    const tickFontSize = isNarrowLayout ? 16 : 12
     const innerWidth = width - margin.left - margin.right
-    const innerHeight = height - margin.top - margin.bottom
+    const innerHeight = resolvedHeight - margin.top - margin.bottom
     const timestamps = data.map((sample) => Date.parse(sample.sampledAt || 0))
     const xMin = timestamps[0]
     const xMax = timestamps[timestamps.length - 1]
@@ -402,26 +570,49 @@ function ArchiveSvgChart({
       allValues.push(area.baselineValue)
     }
 
+    for (const referenceLine of referenceLines) {
+      if (Number.isFinite(referenceLine.value)) {
+        allValues.push(referenceLine.value)
+      }
+    }
+
+    const resolvedYAxisTicks = Array.isArray(yAxisTicks)
+      ? yAxisTicks.filter((tick) => Number.isFinite(tick.value))
+      : null
+    const visibleYAxisTicks = resolvedYAxisTicks?.length ? resolvedYAxisTicks : null
+
+    if (visibleYAxisTicks) {
+      for (const tick of visibleYAxisTicks) {
+        allValues.push(tick.value)
+      }
+    }
+
     if (showZeroLine) {
       allValues.push(0)
     }
 
+    if (!allValues.length) {
+      allValues.push(0, 1)
+    }
+
     const minValue = Math.min(...allValues)
     const maxValue = Math.max(...allValues)
-    const yTicks = buildNumericTicks(minValue, maxValue, 5)
-    const yMin = yTicks[0]
-    const yMax = yTicks[yTicks.length - 1]
-    const xTicks = buildTimeTicks(xMin, xMax, windowDays <= 3 ? 6 : 5)
+    const domainTicks = buildNumericTicks(minValue, maxValue, 5)
+    const yTicks = visibleYAxisTicks || domainTicks.map((value) => ({ value, label: yTickFormatter(value) }))
+    const yMin = domainTicks[0]
+    const yMax = domainTicks[domainTicks.length - 1]
+    const xTicks = buildTimeTicks(xMin, xMax, isNarrowLayout ? 3 : windowDays <= 3 ? 6 : 5)
     const xScale = (index) => margin.left + ((timestamps[index] - xMin) / Math.max(1, xMax - xMin)) * innerWidth
     const xScaleFromTimestamp = (timestamp) => margin.left + ((timestamp - xMin) / Math.max(1, xMax - xMin)) * innerWidth
     const yScale = (value) => margin.top + innerHeight - ((value - yMin) / Math.max(1e-9, yMax - yMin)) * innerHeight
 
     return {
       width,
-      height,
+      height: resolvedHeight,
       margin,
       innerWidth,
       innerHeight,
+      tickFontSize,
       timestamps,
       xMin,
       xMax,
@@ -432,8 +623,9 @@ function ArchiveSvgChart({
       yScale,
       yMin,
       yMax,
+      referenceLines: referenceLines.filter((referenceLine) => Number.isFinite(referenceLine.value)),
     }
-  }, [area, data, height, lines, showZeroLine, windowDays])
+  }, [area, data, height, isNarrowLayout, lines, referenceLines, showZeroLine, windowDays, yAxisTicks, yTickFormatter])
 
   if (!chartState) {
     return null
@@ -479,24 +671,28 @@ function ArchiveSvgChart({
         }}
       >
         {chartState.yTicks.map((tick) => (
-          <g key={`y-${tick}`}>
-            <line
-              x1={chartState.margin.left}
-              x2={chartState.width - chartState.margin.right}
-              y1={chartState.yScale(tick)}
-              y2={chartState.yScale(tick)}
-              stroke={CHART_GRID_COLOR}
-              strokeDasharray="2 2"
-            />
+          <g key={`y-${tick.label || tick.value}`}>
+            {tick.showLine === false ? null : (
+              <line
+                x1={chartState.margin.left}
+                x2={chartState.width - chartState.margin.right}
+                y1={chartState.yScale(tick.value)}
+                y2={chartState.yScale(tick.value)}
+                stroke={tick.stroke || CHART_GRID_COLOR}
+                strokeWidth={tick.strokeWidth || 1}
+                strokeDasharray={tick.strokeDasharray || '2 2'}
+                opacity={tick.opacity ?? 1}
+              />
+            )}
             <text
               x={chartState.margin.left - 8}
-              y={chartState.yScale(tick)}
+              y={chartState.yScale(tick.value)}
               textAnchor="end"
               dominantBaseline="middle"
               fill={CHART_TICK_COLOR}
-              fontSize="12"
+              fontSize={chartState.tickFontSize}
             >
-              {yTickFormatter(tick)}
+              {tick.label ?? yTickFormatter(tick.value)}
             </text>
           </g>
         ))}
@@ -507,7 +703,7 @@ function ArchiveSvgChart({
               y={chartState.height - 6}
               textAnchor="middle"
               fill={CHART_TICK_COLOR}
-              fontSize="12"
+              fontSize={chartState.tickFontSize}
             >
               {formatArchiveTick(tick, windowDays)}
             </text>
@@ -530,6 +726,20 @@ function ArchiveSvgChart({
             stroke="none"
           />
         ) : null}
+        {chartState.referenceLines.map((referenceLine) => (
+          <line
+            key={`reference-${referenceLine.label}-${referenceLine.value}`}
+            x1={chartState.margin.left}
+            x2={chartState.width - chartState.margin.right}
+            y1={chartState.yScale(referenceLine.value)}
+            y2={chartState.yScale(referenceLine.value)}
+            stroke={referenceLine.stroke || '#999999'}
+            strokeWidth={referenceLine.strokeWidth || 1}
+            strokeDasharray={referenceLine.strokeDasharray}
+            opacity={referenceLine.opacity ?? 1}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
         {lines.map((line) => (
           <path
             key={line.name}
@@ -640,6 +850,75 @@ function buildDashboardRequestUrl() {
   return url.toString()
 }
 
+function toFiniteNumber(value, fallback = null) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
+
+function expandTimestampRuns(startTimestamp, timestampRuns) {
+  const startMs = Date.parse(startTimestamp)
+  if (!Number.isFinite(startMs)) {
+    return []
+  }
+
+  const timestamps = [new Date(startMs).toISOString()]
+  let currentMs = startMs
+  for (const run of timestampRuns || []) {
+    const [deltaMs, count] = run
+    for (let index = 0; index < count; index += 1) {
+      currentMs += deltaMs
+      timestamps.push(new Date(currentMs).toISOString())
+    }
+  }
+
+  return timestamps
+}
+
+function normalizeArchiveSample(sample) {
+  const concurrentCount = toFiniteNumber(sample.concurrentCount, 0)
+  const predictedConcurrentCount = toFiniteNumber(sample.predictedConcurrentCount, 0)
+  const predictedConcurrentStdDev = toFiniteNumber(sample.predictedConcurrentStdDev)
+  const divergence = toFiniteNumber(
+    sample.divergence,
+    concurrentCount - predictedConcurrentCount,
+  )
+  const sigmaShift = toFiniteNumber(
+    sample.sigmaShift,
+    predictedConcurrentStdDev ? divergence / predictedConcurrentStdDev : 0,
+  )
+
+  return {
+    sampledAt: sample.sampledAt,
+    concurrentCount,
+    predictedConcurrentCount,
+    predictedConcurrentStdDev,
+    divergence,
+    sigmaShift,
+  }
+}
+
+function normalizeDashboardArchive(archive) {
+  if (Array.isArray(archive)) {
+    return archive.map(normalizeArchiveSample)
+  }
+
+  if (!archive || archive.v !== 1 || !Array.isArray(archive.c)) {
+    return []
+  }
+
+  const timestamps = expandTimestampRuns(archive.t0, archive.tr)
+  const rowCount = Math.max(timestamps.length, archive.c.length, archive.p?.length || 0, archive.s?.length || 0)
+
+  return Array.from({ length: rowCount }, (_, index) =>
+    normalizeArchiveSample({
+      sampledAt: timestamps[index],
+      concurrentCount: archive.c[index],
+      predictedConcurrentCount: archive.p?.[index],
+      predictedConcurrentStdDev: archive.s?.[index],
+    }),
+  )
+}
+
 function createWorldProjection() {
   return geoEqualEarth().fitExtent(
     [
@@ -653,68 +932,90 @@ function createWorldProjection() {
 function createUnitedStatesProjection() {
   return geoMercator()
     .center([-98.5, 38.5])
-    .scale(700)
-    .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2 + 12])
+    .scale(790)
+    .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2 + 24])
 }
 
-function EmergencySummary({ title, signal, latestSweep, actualCount, expectedCount, trackedCount }) {
+function EmergencySummary({ signal, latestSweep, actualCount, expectedCount, trackedCount, maxSeatsAirborneEstimate }) {
   const sigmaShift = signal?.sigmaShift ?? signal?.zScore ?? 0
-  const emergencyLevel = Number(signal?.emergencyLevel || 1)
+  const deviationCount = Number(actualCount || 0) - Number(expectedCount || 0)
+  const emergencyLevel = Math.min(
+    EMERGENCY_LEVEL_COUNT,
+    Math.max(1, Math.round(Number(signal?.emergencyLevel || 1))),
+  )
 
   return (
-    <section className="panel dial-panel">
+    <section className={`panel dial-panel emergency-level-${emergencyLevel}`}>
       <div className="panel-header">
-        <div><h2>{title}</h2></div>
+        <div><h2>Emergency level {emergencyLevel}/5</h2></div>
       </div>
-      <p className="emergency-line">
-        <strong>Emergency level: {emergencyLevel}/5.</strong>
-      </p>
-      <p className="panel-lede">Current deviation: {formatSigned(sigmaShift)}</p>
       <div className="summary-text-block">
-        <p><strong>Last updated:</strong> {latestSweep}</p>
-        <p><strong>Aircraft currently airborne:</strong> {formatCount(actualCount)}</p>
-        <p><strong>Expected airborne aircraft:</strong> {formatCount(expectedCount)}</p>
-        <p><strong>Tracked aircraft:</strong> {formatCount(trackedCount)}</p>
+        <p className="summary-count-line">
+          <strong>{formatCount(actualCount)}</strong>/<strong>{formatCount(trackedCount)}</strong>
+          <AirplaneIcon className="summary-inline-icon summary-airplane-icon" />
+          {' planes airborne'}
+        </p>
+        {maxSeatsAirborneEstimate ? (
+          <p
+            className="summary-count-line"
+            title={`Known capacities for ${formatCount(maxSeatsAirborneEstimate.knownAircraftCount)} of ${formatCount(maxSeatsAirborneEstimate.totalAircraftCount)} airborne aircraft; missing capacities are scaled by the known average.`}
+          >
+            <strong>{formatCount(maxSeatsAirborneEstimate.estimatedSeats)}</strong>
+            <PersonIcon className="summary-inline-icon summary-person-icon" />
+            {' max people airborne'}
+          </p>
+        ) : null}
+        <p>
+          <strong>Deviation:</strong> {formatDelta(deviationCount)}
+          <AirplaneIcon className="summary-inline-icon summary-airplane-icon" />
+          ({formatSigned(sigmaShift)})
+        </p>
+        <p><strong>Last Update:</strong> {latestSweep}</p>
       </div>
     </section>
   )
 }
 
-function ArchiveChart({ data }) {
-  return <ArchiveChartPanel key={`archive-${data.length}`} data={data} defaultWindowDays={3} />
+function ArchiveChart({ data, signal }) {
+  const archiveData = useMemo(() => normalizeDashboardArchive(data), [data])
+  return <ArchiveChartPanel key={`archive-${archiveData.length}`} data={archiveData} signal={signal} defaultWindowDays={3} />
 }
 
-function ArchiveChartPanel({ data, defaultWindowDays }) {
+function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
   const hasData = data.length > 0
   const sampledAtTimestamps = useMemo(() => data.map((sample) => Date.parse(sample.sampledAt || 0)), [data])
   const latestTimestamp = sampledAtTimestamps[sampledAtTimestamps.length - 1] || 0
   const earliestTimestamp = sampledAtTimestamps[0] || 0
   const maxDaysAvailable = Math.max(1, Math.ceil((latestTimestamp - earliestTimestamp) / ARCHIVE_DAY_MS))
-  const [rangeDaysAgo, setRangeDaysAgo] = useState(() => ({
-    startDaysAgo: clamp(defaultWindowDays, 1, maxDaysAvailable),
-    endDaysAgo: 0,
-  }))
-  const clampedRangeDaysAgo = {
-    startDaysAgo: clamp(rangeDaysAgo.startDaysAgo, 1, maxDaysAvailable),
-    endDaysAgo: clamp(rangeDaysAgo.endDaysAgo, 0, Math.max(0, clamp(rangeDaysAgo.startDaysAgo, 1, maxDaysAvailable) - 1)),
+  const [archiveWindowDays, setArchiveWindowDaysState] = useState(defaultWindowDays)
+  const [endDaysAgo, setEndDaysAgo] = useState(0)
+  const effectiveWindowDays = clamp(archiveWindowDays, 1, maxDaysAvailable)
+  const maxEndDaysAgo = Math.max(0, maxDaysAvailable - effectiveWindowDays)
+  const clampedEndDaysAgo = clamp(endDaysAgo, 0, maxEndDaysAgo)
+  const startDaysAgo = clampedEndDaysAgo + effectiveWindowDays
+  const sliderValue = maxEndDaysAgo - clampedEndDaysAgo
+  const sliderPercent = maxEndDaysAgo > 0 ? (sliderValue / maxEndDaysAgo) * 100 : 100
+  const isLongWindow = effectiveWindowDays >= 30
+  const isDenseWindow = archiveWindowDays === 90 || archiveWindowDays === ARCHIVE_FULL_WINDOW_DAYS
+  const primaryLineWidth = isDenseWindow ? 1.45 : 2.5
+  const secondaryLineWidth = isDenseWindow ? 1.15 : 2
+  const referenceLineWidth = isDenseWindow ? 0.75 : 1
+
+  function setArchiveWindowDays(nextWindowDays) {
+    const nextWindowDaysClamped = clamp(nextWindowDays, 1, maxDaysAvailable)
+    setArchiveWindowDaysState(nextWindowDays)
+    setEndDaysAgo((currentEndDaysAgo) => clamp(currentEndDaysAgo, 0, Math.max(0, maxDaysAvailable - nextWindowDaysClamped)))
   }
 
-  function setArchiveRange(startDaysAgo, endDaysAgo = 0) {
-    const nextStart = clamp(startDaysAgo, 1, maxDaysAvailable)
-    const nextEnd = clamp(endDaysAgo, 0, Math.max(0, nextStart - 1))
-    setRangeDaysAgo({
-      startDaysAgo: nextStart,
-      endDaysAgo: nextEnd,
-    })
+  function setArchivePosition(nextSliderValue) {
+    setEndDaysAgo(clamp(maxEndDaysAgo - nextSliderValue, 0, maxEndDaysAgo))
   }
 
-  const visibleWindowDays = Math.max(1, clampedRangeDaysAgo.startDaysAgo - clampedRangeDaysAgo.endDaysAgo)
-  const pastHandlePercent = ((maxDaysAvailable - clampedRangeDaysAgo.startDaysAgo) / maxDaysAvailable) * 100
-  const nowHandlePercent = ((maxDaysAvailable - clampedRangeDaysAgo.endDaysAgo) / maxDaysAvailable) * 100
+  const visibleWindowDays = effectiveWindowDays
 
   const { visibleData, visibleStart, visibleEnd } = useMemo(() => {
-    const lowerBound = latestTimestamp - clampedRangeDaysAgo.startDaysAgo * ARCHIVE_DAY_MS
-    const upperBound = latestTimestamp - clampedRangeDaysAgo.endDaysAgo * ARCHIVE_DAY_MS
+    const lowerBound = latestTimestamp - startDaysAgo * ARCHIVE_DAY_MS
+    const upperBound = latestTimestamp - clampedEndDaysAgo * ARCHIVE_DAY_MS
     const startIndex = findFirstIndexAtOrAfter(sampledAtTimestamps, lowerBound)
     const endIndex = findLastIndexAtOrBefore(sampledAtTimestamps, upperBound)
     const slicedData = startIndex <= endIndex ? data.slice(startIndex, endIndex + 1) : []
@@ -724,7 +1025,9 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
       visibleStart: slicedData[0]?.sampledAt,
       visibleEnd: slicedData[slicedData.length - 1]?.sampledAt,
     }
-  }, [clampedRangeDaysAgo.endDaysAgo, clampedRangeDaysAgo.startDaysAgo, data, latestTimestamp, sampledAtTimestamps])
+  }, [clampedEndDaysAgo, data, latestTimestamp, sampledAtTimestamps, startDaysAgo])
+  const emergencyLevelReferenceLines = buildEmergencyLevelReferenceLines(referenceLineWidth)
+  const getSampleEmergencyLevel = (sample) => getContinuousEmergencyLevel(sample.sigmaShift, signal?.alarmSigmaThreshold)
 
   if (!hasData) {
     return (
@@ -760,39 +1063,20 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <div
               className="chart-range-track-active"
               style={{
-                left: `${pastHandlePercent}%`,
-                right: `${100 - nowHandlePercent}%`,
+                left: 0,
+                right: `${100 - sliderPercent}%`,
               }}
             />
             <input
-              className="chart-range-input chart-range-input-past"
-              type="range"
-              min="1"
-              max={maxDaysAvailable}
-              step="1"
-              value={maxDaysAvailable - clampedRangeDaysAgo.startDaysAgo}
-              onChange={(event) =>
-                setArchiveRange(
-                  maxDaysAvailable - Number(event.target.value),
-                  clampedRangeDaysAgo.endDaysAgo,
-                )
-              }
-              aria-label="Past archive boundary"
-            />
-            <input
-              className="chart-range-input chart-range-input-now"
+              className="chart-range-input"
               type="range"
               min="0"
-              max={maxDaysAvailable}
+              max={maxEndDaysAgo}
               step="1"
-              value={maxDaysAvailable - clampedRangeDaysAgo.endDaysAgo}
-              onChange={(event) =>
-                setArchiveRange(
-                  clampedRangeDaysAgo.startDaysAgo,
-                  maxDaysAvailable - Number(event.target.value),
-                )
-              }
-              aria-label="Current archive boundary"
+              value={sliderValue}
+              onChange={(event) => setArchivePosition(Number(event.target.value))}
+              disabled={maxEndDaysAgo === 0}
+              aria-label="Archive position"
             />
           </div>
         </div>
@@ -804,8 +1088,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={clampedRangeDaysAgo.startDaysAgo === 3 && clampedRangeDaysAgo.endDaysAgo === 0}
-              onChange={() => setArchiveRange(3, 0)}
+              checked={archiveWindowDays === 3}
+              onChange={() => setArchiveWindowDays(3)}
             />
             <span>3 days</span>
           </label>
@@ -813,8 +1097,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={clampedRangeDaysAgo.startDaysAgo === 30 && clampedRangeDaysAgo.endDaysAgo === 0}
-              onChange={() => setArchiveRange(30, 0)}
+              checked={archiveWindowDays === 30}
+              onChange={() => setArchiveWindowDays(30)}
             />
             <span>30D</span>
           </label>
@@ -822,8 +1106,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={clampedRangeDaysAgo.startDaysAgo === 90 && clampedRangeDaysAgo.endDaysAgo === 0}
-              onChange={() => setArchiveRange(90, 0)}
+              checked={archiveWindowDays === 90}
+              onChange={() => setArchiveWindowDays(90)}
             />
             <span>90D</span>
           </label>
@@ -831,8 +1115,8 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
             <input
               type="radio"
               name="archive-window"
-              checked={clampedRangeDaysAgo.startDaysAgo === maxDaysAvailable && clampedRangeDaysAgo.endDaysAgo === 0}
-              onChange={() => setArchiveRange(maxDaysAvailable, 0)}
+              checked={archiveWindowDays === ARCHIVE_FULL_WINDOW_DAYS}
+              onChange={() => setArchiveWindowDays(ARCHIVE_FULL_WINDOW_DAYS)}
             />
             <span>Full Year</span>
           </label>
@@ -848,14 +1132,14 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
               name: 'Observed concurrent',
               accessor: (sample) => sample.concurrentCount,
               stroke: CHART_PRIMARY_COLOR,
-              strokeWidth: 2.5,
+              strokeWidth: primaryLineWidth,
             },
             {
               name: 'Predicted concurrent',
               accessor: (sample) => sample.predictedConcurrentCount,
-              stroke: CHART_SECONDARY_COLOR,
-              strokeWidth: 2,
-              strokeDasharray: '7 6',
+              stroke: isLongWindow ? CHART_LONG_WINDOW_SECONDARY_COLOR : CHART_SECONDARY_COLOR,
+              strokeWidth: secondaryLineWidth,
+              strokeDasharray: isLongWindow ? undefined : '7 6',
             },
           ]}
           tooltipFormatter={(sample) => (
@@ -869,34 +1153,40 @@ function ArchiveChartPanel({ data, defaultWindowDays }) {
       </div>
       <div className="chart-subsection">
         <div className="chart-subsection-header">
-          <strong>Difference from Predicted Concurrent Activity</strong>
-          <span>Positive values indicate more aircraft airborne than predicted for that half-hour slot.</span>
+          <strong>Historical Emergency Level</strong>
+          <span>Level 5 is calibrated so only the highest daily peak in the trailing year should exceed it.</span>
         </div>
         <div className="chart-frame chart-frame-secondary">
           <ArchiveSvgChart
             data={visibleData}
             height={ARCHIVE_DIVERGENCE_HEIGHT}
             windowDays={visibleWindowDays}
-            yTickFormatter={formatDelta}
-            showZeroLine
+            yAxisTicks={emergencyLevelReferenceLines.map((line) => ({
+              value: line.value,
+              label: line.label,
+              showLine: false,
+            }))}
+            referenceLines={emergencyLevelReferenceLines}
             area={{
-              accessor: (sample) => sample.divergence,
-              baselineValue: 0,
+              accessor: getSampleEmergencyLevel,
+              baselineValue: 1,
               fill: 'rgba(0, 0, 238, 0.14)',
               stroke: CHART_PRIMARY_COLOR,
             }}
             lines={[
               {
-                name: 'Difference',
-                accessor: (sample) => sample.divergence,
+                name: 'Emergency level',
+                accessor: getSampleEmergencyLevel,
                 stroke: CHART_PRIMARY_COLOR,
-                strokeWidth: 2,
+                strokeWidth: primaryLineWidth,
               },
             ]}
             tooltipFormatter={(sample) => (
               <>
                 <strong>{formatTimestamp(sample.sampledAt)}</strong>
+                <span>Level: {formatEmergencyLevel(getSampleEmergencyLevel(sample))}</span>
                 <span>Difference: {formatDelta(sample.divergence)}</span>
+                <span>Sigma: {formatSigned(sample.sigmaShift)}</span>
               </>
             )}
           />
@@ -913,9 +1203,9 @@ function GlobalMap({ aircraft }) {
   const projection = isNarrowLayout ? createUnitedStatesProjection() : createWorldProjection()
   const path = geoPath(projection)
   const graticulePath = path(geoGraticule10())
-  const markerHaloRadius = isNarrowLayout ? 15 : 12
-  const markerHitRadius = isNarrowLayout ? 24 : 16
-  const markerIconScale = isNarrowLayout ? 1.22 : 1
+  const markerHaloRadius = isNarrowLayout ? 18 : 12
+  const markerHitRadius = isNarrowLayout ? 30 : 16
+  const markerIconScale = isNarrowLayout ? 1.65 : 1
 
   function toggleActivePlane(planeHex) {
     setActivePlaneHex((currentHex) => (currentHex === planeHex ? null : planeHex))
@@ -928,8 +1218,8 @@ function GlobalMap({ aircraft }) {
       </div>
 
       <div className="map-frame">
-        <div className={`map-hover-card${activePlane ? ' map-hover-card-active' : ''}`}>
-          {activePlane ? (
+        {activePlane ? (
+          <div className="map-hover-card map-hover-card-active">
             <>
               <div className="map-hover-header">
                 <strong>{activePlane.label || activePlane.registration || activePlane.hex?.toUpperCase()}</strong>
@@ -954,17 +1244,8 @@ function GlobalMap({ aircraft }) {
                 </div>
               </dl>
             </>
-          ) : (
-            <div className="map-hover-empty">
-              <strong>{isNarrowLayout ? 'Tap a craft' : 'Hover a craft'}</strong>
-              <span>
-                {isNarrowLayout
-                  ? 'Tap any marker to inspect the latest half-hour snapshot for that aircraft.'
-                  : 'Mouse over any marker to inspect the latest half-hour snapshot for that aircraft.'}
-              </span>
-            </div>
-          )}
-        </div>
+          </div>
+        ) : null}
         <svg
           viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
           className={`map-svg${isNarrowLayout ? ' map-svg-narrow' : ''}`}
@@ -981,7 +1262,7 @@ function GlobalMap({ aircraft }) {
               : undefined
           }
         >
-          <rect x="8" y="8" width="784" height="394" rx={isNarrowLayout ? 16 : 198} className="map-sphere" />
+          {!isNarrowLayout ? <rect x="8" y="8" width="784" height="394" rx="198" className="map-sphere" /> : null}
           <path d={graticulePath} className="map-graticule" />
           {worldGeographies.map((geo) => (
             <path key={geo.id || geo.properties?.name} d={path(geo)} className="map-geography" />
@@ -1044,6 +1325,33 @@ function GlobalMap({ aircraft }) {
   )
 }
 
+function ExternalLinkIcon() {
+  return (
+    <svg className="model-external-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M6 4H3.5A1.5 1.5 0 0 0 2 5.5v7A1.5 1.5 0 0 0 3.5 14h7a1.5 1.5 0 0 0 1.5-1.5V10" />
+      <path d="M9 2h5v5" />
+      <path d="M8 8 14 2" />
+    </svg>
+  )
+}
+
+function AirplaneIcon({ className }) {
+  return (
+    <svg className={className} viewBox="-10 -10 20 20" aria-hidden="true" focusable="false">
+      <path d={AIRCRAFT_MARKER_PATH} transform="rotate(90)" />
+    </svg>
+  )
+}
+
+function PersonIcon({ className = 'model-person-icon' }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="4.5" r="2.4" />
+      <path d="M3.8 14c.35-3 1.75-4.6 4.2-4.6s3.85 1.6 4.2 4.6" />
+    </svg>
+  )
+}
+
 function ModelSummaryList({ aircraft }) {
   const modelSummary = buildLiveModelSummary(aircraft)
 
@@ -1055,20 +1363,126 @@ function ModelSummaryList({ aircraft }) {
       </div>
       {modelSummary.length ? (
         <ul className="flight-list model-list">
-          {modelSummary.map((entry) => (
-            <li key={entry.modelLabel}>
-              <div>
-                <strong>{entry.modelLabel}</strong>
-              </div>
-              <strong className="model-count">{formatCount(entry.count)}</strong>
-            </li>
-          ))}
+          {modelSummary.map((entry) => {
+            const wikipediaUrl =
+              entry.rank <= AIRCRAFT_MODEL_DETAIL_RANK_LIMIT ? getAircraftModelWikipediaUrl(entry.modelLabel) : null
+            const maxPassengers =
+              entry.rank <= AIRCRAFT_MODEL_DETAIL_RANK_LIMIT ? getAircraftModelMaxPassengers(entry.modelLabel) : null
+
+            return (
+              <li key={entry.modelLabel}>
+                <div className="model-name-cell">
+                  <div className="model-title-row">
+                    {wikipediaUrl ? (
+                      <a
+                        className="model-wiki-link"
+                        href={wikipediaUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`${entry.modelLabel} on Wikipedia`}
+                      >
+                        <strong>{entry.modelLabel}</strong>
+                        <ExternalLinkIcon />
+                      </a>
+                    ) : (
+                      <strong>{entry.modelLabel}</strong>
+                    )}
+                    {maxPassengers ? (
+                      <span
+                        className="model-passenger-label"
+                        title={`Maximum passengers: ${maxPassengers}`}
+                        aria-label={`Maximum passengers: ${maxPassengers}`}
+                      >
+                        <span>{maxPassengers}</span>
+                        <PersonIcon />
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <strong className="model-count">{formatCount(entry.count)}</strong>
+              </li>
+            )
+          })}
         </ul>
       ) : (
         <div className="empty-state">
           No tracked aircraft are currently airborne in the latest cached heatmap.
         </div>
       )}
+    </section>
+  )
+}
+
+function AboutSystemCard() {
+  return (
+    <section className="panel about-panel">
+      <div className="panel-header">
+        <div><h2>How This Works</h2></div>
+      </div>
+      <div className="about-copy">
+        <p>
+          This site watches a fixed cohort of business jets and asks a simple question: is the number currently airborne
+          unusual for this time? It is not tracking all aircraft. The tracked set is built from{' '}
+          <a
+            href="https://www.faa.gov/licenses_certificates/aircraft_certification/aircraft_registry/releasable_aircraft_download"
+            target="_blank"
+            rel="noreferrer"
+          >
+            FAA registry data
+          </a>{' '}
+          with a practical business-jet filter, and each aircraft is matched by its{' '}
+          <a
+            href="https://en.wikipedia.org/wiki/Aviation_transponder_interrogation_modes#ICAO_24-bit_address"
+            target="_blank"
+            rel="noreferrer"
+          >
+            ICAO hex identifier
+          </a>
+          .
+        </p>
+        <p>
+          The flight data comes from{' '}
+          <a href="https://www.adsbexchange.com/" target="_blank" rel="noreferrer">
+            ADS-B Exchange
+          </a>{' '}
+          heatmap files. Those files are published in half-hour slots and encode recent aircraft positions. The backend
+          downloads the newest available heatmap, parses it, matches the aircraft in the heatmap against the tracked
+          cohort, and stores the latest position, altitude, speed, heading, and airborne state for each match.
+        </p>
+        <p>
+          Historical context comes from the same heatmap format. The backfill job walks through previous half-hour slots,
+          counts how many tracked aircraft were airborne, and records those counts in SQLite. The dashboard then compares
+          the current concurrent airborne count with a recent baseline for similar times of day and week.
+        </p>
+        <p>
+          The deviation number is the current count minus the expected count. The sigma value puts that difference on the
+          scale of recent model error, so a small positive count can matter more when the baseline is normally stable, and
+          a larger count can matter less when that time slot is usually noisy. The emergency level is a compact display of
+          that same standardized signal.
+        </p>
+        <p>
+          The max-people estimate is intentionally rough. It maps known aircraft model labels to published maximum
+          passenger capacities, sums the known matches, and scales missing capacities by the known average. It is a maximum
+          seat estimate, not a passenger manifest.
+        </p>
+        <p>
+          There are important limits. ADS-B coverage can be incomplete, aircraft may be blocked or misidentified, heatmaps
+          arrive in coarse half-hour windows, and the FAA-derived cohort is a heuristic rather than a perfect definition of
+          every relevant private jet. The dashboard is best read as an anomaly monitor for public flight signals, not as
+          proof of intent, destination, ownership activity, or who is on board.
+        </p>
+        <p className="about-credit">
+          Built by{' '}
+          <a href="https://www.instagram.com/kcimc/" target="_blank" rel="noreferrer">
+            Kyle McDonald
+          </a>{' '}
+          /{' '}
+          <a href="https://kylemcdonald.net/" target="_blank" rel="noreferrer">
+            kylemcdonald.net
+          </a>
+          .
+        </p>
+      </div>
     </section>
   )
 }
@@ -1151,6 +1565,7 @@ function App() {
       sigmaShift: dashboard.current?.zScore,
       alertLevel: dashboard.current?.alertLevel,
     }
+    const maxSeatsAirborneEstimate = estimateMaxSeatsAirborne(liveAircraft, compositeSignal.actualConcurrentCount)
 
     content = (
       <main className="app-shell">
@@ -1191,12 +1606,12 @@ function App() {
           </section>
           <div className="dial-stack">
             <EmergencySummary
-              title="Current Assessment"
               signal={compositeSignal}
               latestSweep={formatTimestamp(dashboard.current?.asOf)}
               actualCount={compositeSignal.actualConcurrentCount}
               expectedCount={compositeSignal.expectedConcurrentCount}
               trackedCount={dashboard.cohort?.trackedCount ?? dashboard.watchlist?.trackedCount}
+              maxSeatsAirborneEstimate={maxSeatsAirborneEstimate}
             />
           </div>
         </section>
@@ -1206,8 +1621,9 @@ function App() {
         </section>
 
         <section className="details-stack">
-          <ArchiveChart data={archiveData} />
+          <ArchiveChart data={archiveData} signal={compositeSignal} />
           <ModelSummaryList aircraft={liveAircraft} />
+          <AboutSystemCard />
         </section>
       </main>
     )

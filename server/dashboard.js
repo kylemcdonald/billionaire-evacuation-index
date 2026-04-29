@@ -29,6 +29,7 @@ const CONCURRENT_MIN_HISTORY_SAMPLES = 7 * 48;
 const CONCURRENT_MIN_STD_DEV = 8;
 const MIN_ALARM_SIGMA_THRESHOLD = 4;
 const DEFAULT_ALARM_SIGMA_THRESHOLD = 7;
+const ARCHIVE_DECIMAL_PLACES = 2;
 
 function mean(values) {
   const finiteValues = values.filter((value) => Number.isFinite(value));
@@ -102,6 +103,87 @@ function computeBaselineSignal(currentValue, baselineMean, baselineStdDev, alarm
     gaugeValue: computeGaugeValue(sigmaShift, alarmSigmaThreshold),
     alertLevel: computeAlertLevel(sigmaShift, alarmSigmaThreshold),
     emergencyLevel: computeEmergencyLevel(sigmaShift, alarmSigmaThreshold),
+  };
+}
+
+function roundNumber(value, decimalPlaces) {
+  if (!Number.isFinite(value) || Number.isInteger(value)) {
+    return value;
+  }
+
+  const factor = 10 ** decimalPlaces;
+  return Math.round(value * factor) / factor;
+}
+
+function encodeRuns(values) {
+  const runs = [];
+  for (const value of values) {
+    const previous = runs[runs.length - 1];
+    if (previous && previous[0] === value) {
+      previous[1] += 1;
+    } else {
+      runs.push([value, 1]);
+    }
+  }
+
+  return runs;
+}
+
+function buildTimestampDeltaRuns(records) {
+  const deltas = [];
+  for (let index = 1; index < records.length; index += 1) {
+    const previousTimestamp = Date.parse(records[index - 1].sampledAt);
+    const currentTimestamp = Date.parse(records[index].sampledAt);
+
+    if (!Number.isFinite(previousTimestamp) || !Number.isFinite(currentTimestamp)) {
+      return null;
+    }
+
+    deltas.push(currentTimestamp - previousTimestamp);
+  }
+
+  return encodeRuns(deltas);
+}
+
+function compactArchiveSeries(records) {
+  if (!records.length) {
+    return {
+      v: 1,
+      t0: null,
+      tr: [],
+      c: [],
+      p: [],
+      s: [],
+    };
+  }
+
+  const timestampDeltaRuns = buildTimestampDeltaRuns(records);
+  if (!timestampDeltaRuns) {
+    return records.map((record) => ({
+      sampledAt: record.sampledAt,
+      concurrentCount: record.concurrentCount,
+      predictedConcurrentCount: roundNumber(
+        record.expectedConcurrentCount ?? record.predictedConcurrentCount,
+        ARCHIVE_DECIMAL_PLACES,
+      ),
+      predictedConcurrentStdDev: roundNumber(
+        record.expectedConcurrentStdDev ?? record.predictedConcurrentStdDev,
+        ARCHIVE_DECIMAL_PLACES,
+      ),
+    }));
+  }
+
+  return {
+    v: 1,
+    t0: records[0].sampledAt,
+    tr: timestampDeltaRuns,
+    c: records.map((record) => record.concurrentCount),
+    p: records.map((record) =>
+      roundNumber(record.expectedConcurrentCount ?? record.predictedConcurrentCount, ARCHIVE_DECIMAL_PLACES),
+    ),
+    s: records.map((record) =>
+      roundNumber(record.expectedConcurrentStdDev ?? record.predictedConcurrentStdDev, ARCHIVE_DECIMAL_PLACES),
+    ),
   };
 }
 
@@ -588,14 +670,7 @@ function buildDashboardPayload({ liveStatus: liveStatusOverride = null } = {}) {
   const rollingHistory = getAllRollingMetrics();
   const concurrentContext = buildConcurrentPredictionContext(rollingHistory);
   const currentModel = computeConcurrentPredictionModel(referenceIso, concurrentCount, concurrentContext);
-  const archiveSeries = getTrailingConcurrentRecords(concurrentContext.records).map((record) => ({
-    sampledAt: record.sampledAt,
-    concurrentCount: record.concurrentCount,
-    predictedConcurrentCount: record.expectedConcurrentCount,
-    predictedConcurrentStdDev: record.expectedConcurrentStdDev,
-    divergence: record.divergence,
-    sigmaShift: record.sigmaShift,
-  }));
+  const archiveSeries = compactArchiveSeries(getTrailingConcurrentRecords(concurrentContext.records));
 
   return {
     mode: tracking.configured ? "configured" : "empty",
@@ -650,8 +725,13 @@ function buildDashboardSnapshot({ liveStatus = null, snapshotGeneratedAt = new D
   const onlyDemoData = areAllTrackedAircraftDemo();
 
   if ((!trackedCount && !hasAnyHistoricalData) || onlyDemoData) {
+    const demoDashboard = getDemoDashboard();
     return {
-      ...getDemoDashboard(),
+      ...demoDashboard,
+      trends: {
+        ...demoDashboard.trends,
+        archive: compactArchiveSeries(demoDashboard.trends?.archive ?? []),
+      },
       snapshotGeneratedAt,
     };
   }
