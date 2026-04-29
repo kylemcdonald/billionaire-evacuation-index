@@ -20,6 +20,7 @@ const CHART_PRIMARY_COLOR = '#0000ee'
 const CHART_SECONDARY_COLOR = '#808080'
 const CHART_LONG_WINDOW_SECONDARY_COLOR = 'rgba(128, 128, 128, 0.48)'
 const WORLD_FEATURE_COLLECTION = { type: 'FeatureCollection', features: worldGeographies }
+const LOADING_ANIMATION_URL = '/animation.mp4'
 const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.png'
 const ARCHIVE_CHART_WIDTH = 960
 const ARCHIVE_CHART_MOBILE_WIDTH = 440
@@ -1503,9 +1504,27 @@ function AboutSystemCard() {
   )
 }
 
+function LoadingAnimation() {
+  return (
+    <main className="loading-screen" aria-label="Loading">
+      <video
+        className="loading-animation"
+        src={LOADING_ANIMATION_URL}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        aria-hidden="true"
+      />
+    </main>
+  )
+}
+
 function App() {
   const [dashboard, setDashboard] = useState(null)
   const [error, setError] = useState(null)
+  const [backgroundReady, setBackgroundReady] = useState(false)
 
   const applyDashboard = useEffectEvent((nextDashboard) => {
     startTransition(() => {
@@ -1527,6 +1546,21 @@ function App() {
 
   useEffect(() => {
     let active = true
+    const backgroundImage = new Image()
+
+    backgroundImage.onload = () => {
+      if (active) {
+        setBackgroundReady(true)
+      }
+    }
+
+    backgroundImage.onerror = () => {
+      if (active) {
+        setBackgroundReady(true)
+      }
+    }
+
+    backgroundImage.src = BACKGROUND_URL
 
     async function loadDashboard() {
       try {
@@ -1561,14 +1595,8 @@ function App() {
         </section>
       </main>
     )
-  } else if (!dashboard) {
-    content = (
-      <main className="app-shell">
-        <section className="panel loading-panel">
-          <h1>Loading</h1>
-        </section>
-      </main>
-    )
+  } else if (!dashboard || !backgroundReady) {
+    content = <LoadingAnimation />
   } else {
     const archiveData = dashboard.trends?.archive ?? []
     const liveAircraft = dashboard.liveAircraft ?? []
@@ -1644,7 +1672,9 @@ function App() {
 
   return (
     <>
-      <div className="background-wallpaper" style={{ backgroundImage: `url("${BACKGROUND_URL}")` }} aria-hidden="true" />
+      {(dashboard && backgroundReady) || error ? (
+        <div className="background-wallpaper" style={{ backgroundImage: `url("${BACKGROUND_URL}")` }} aria-hidden="true" />
+      ) : null}
       {content}
     </>
   )

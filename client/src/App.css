@@ -122,6 +122,21 @@
   margin-right: 6px;
 }
 
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgb(221, 218, 210);
+}
+
+.loading-animation {
+  display: block;
+  width: 128px;
+  height: 128px;
+}
+
 .dial-stack {
   display: grid;
   gap: 16px;
