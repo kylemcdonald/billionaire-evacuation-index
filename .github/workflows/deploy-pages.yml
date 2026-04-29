@@ -49,4 +49,4 @@ jobs:
         run: npm run build
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy client/dist --project-name billionaire-evacuation-index --branch main --commit-hash "$GITHUB_SHA"
+        run: npx wrangler pages deploy client/dist --project-name apocalypse-ews --branch main --commit-hash "$GITHUB_SHA"
