@@ -1059,7 +1059,7 @@ function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
     return (
       <section className="panel chart-panel">
         <div className="panel-header">
-          <div><h2>Escape Traffic Archive</h2></div>
+          <div><h2>Traffic Archive</h2></div>
         </div>
         <div className="empty-state">No historical half-hour data is available yet.</div>
       </section>
@@ -1069,7 +1069,7 @@ function ArchiveChartPanel({ data, signal, defaultWindowDays }) {
   return (
     <section className="panel chart-panel history-panel">
       <div className="panel-header">
-        <div><h2>Escape Traffic Archive</h2></div>
+        <div><h2>Traffic Archive</h2></div>
       </div>
       <div className="chart-toolbar">
         <div className="chart-range-copy">
@@ -1232,7 +1232,7 @@ function GlobalMap({ aircraft }) {
   return (
     <section className="panel map-panel">
       <div className="panel-header">
-        <div><h2>Aircraft Positions</h2></div>
+        <div><h2>Realtime Tracker</h2></div>
       </div>
 
       <div className="map-frame">

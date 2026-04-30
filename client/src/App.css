@@ -540,7 +540,6 @@
 }
 
 .about-copy a {
-  color: #000000;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -667,7 +666,6 @@
   max-width: 100%;
   align-items: center;
   gap: 5px;
-  color: #000000;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
