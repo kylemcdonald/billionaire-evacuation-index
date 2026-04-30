@@ -673,6 +673,7 @@
 .model-wiki-link strong {
   display: inline;
   min-width: 0;
+  color: inherit;
   overflow-wrap: anywhere;
 }
 
