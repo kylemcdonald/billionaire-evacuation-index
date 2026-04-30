@@ -1,6 +1,9 @@
 node_modules/
 client/node_modules/
 client/dist/
+.env
+.env.local
+.env.*.local
 data/
 tmp/
 config/watchlist.json
