@@ -21,7 +21,8 @@ const CHART_SECONDARY_COLOR = '#808080'
 const CHART_LONG_WINDOW_SECONDARY_COLOR = 'rgba(128, 128, 128, 0.48)'
 const WORLD_FEATURE_COLLECTION = { type: 'FeatureCollection', features: worldGeographies }
 const LOADING_ANIMATION_URL = '/animation.mp4'
-const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.png'
+const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.webp'
+const BACKGROUND_PRELOAD_LINK_ID = 'background-preload'
 const ARCHIVE_CHART_WIDTH = 960
 const ARCHIVE_CHART_MOBILE_WIDTH = 440
 const ARCHIVE_CHART_HEIGHT = 320
@@ -1546,21 +1547,23 @@ function App() {
 
   useEffect(() => {
     let active = true
-    const backgroundImage = new Image()
+    const backgroundPreload = document.getElementById(BACKGROUND_PRELOAD_LINK_ID)
+    const backgroundHref = new URL(BACKGROUND_URL, window.location.href).href
 
-    backgroundImage.onload = () => {
+    function markBackgroundReady() {
       if (active) {
         setBackgroundReady(true)
       }
     }
 
-    backgroundImage.onerror = () => {
-      if (active) {
-        setBackgroundReady(true)
-      }
+    if (window.performance?.getEntriesByName(backgroundHref).some((entry) => entry.responseEnd > 0)) {
+      markBackgroundReady()
+    } else if (backgroundPreload) {
+      backgroundPreload.addEventListener('load', markBackgroundReady)
+      backgroundPreload.addEventListener('error', markBackgroundReady)
+    } else {
+      markBackgroundReady()
     }
-
-    backgroundImage.src = BACKGROUND_URL
 
     async function loadDashboard() {
       try {
@@ -1580,6 +1583,8 @@ function App() {
 
     return () => {
       active = false
+      backgroundPreload?.removeEventListener('load', markBackgroundReady)
+      backgroundPreload?.removeEventListener('error', markBackgroundReady)
       window.clearInterval(intervalId)
     }
   }, [])
@@ -1672,9 +1677,7 @@ function App() {
 
   return (
     <>
-      {(dashboard && backgroundReady) || error ? (
-        <div className="background-wallpaper" style={{ backgroundImage: `url("${BACKGROUND_URL}")` }} aria-hidden="true" />
-      ) : null}
+      <div className="background-wallpaper" style={{ backgroundImage: `url("${BACKGROUND_URL}")` }} aria-hidden="true" />
       {content}
     </>
   )
