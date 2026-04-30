@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="initial-loading">
   <head>
     <meta charset="UTF-8" />
     <link rel="preload" href="/animation.mp4" as="video" type="video/mp4" fetchpriority="high" />
@@ -18,9 +18,69 @@
       content="Local dashboard for monitoring tracked-aircraft anomaly signals over a rolling 24-hour window."
     />
     <title>Apocalypse Early Warning System</title>
+    <style>
+      html.initial-loading,
+      html.initial-loading body {
+        margin: 0;
+        min-width: 320px;
+        background: rgb(219, 212, 204);
+      }
+
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: grid;
+        place-items: center;
+        background: rgb(219, 212, 204);
+        opacity: 1;
+        transition: opacity 120ms linear;
+      }
+
+      #initial-loader.initial-loader-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #initial-loader video {
+        display: block;
+        width: 128px;
+        height: 128px;
+      }
+    </style>
   </head>
   <body>
+    <main id="initial-loader" aria-label="Loading">
+      <video src="/animation.mp4" autoplay loop muted playsinline preload="auto" aria-hidden="true"></video>
+    </main>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module">
+      const loaderVideo = document.querySelector('#initial-loader video')
+      let appStarted = false
+
+      function startApp() {
+        if (appStarted) {
+          return
+        }
+
+        appStarted = true
+        requestAnimationFrame(() => {
+          setTimeout(() => import('/src/main.jsx'), 0)
+        })
+      }
+
+      if (loaderVideo) {
+        loaderVideo.addEventListener('loadeddata', startApp, { once: true })
+        loaderVideo.addEventListener('error', startApp, { once: true })
+
+        if (loaderVideo.readyState >= 2) {
+          startApp()
+        }
+
+        setTimeout(startApp, 1200)
+      } else {
+        startApp()
+      }
+    </script>
   </body>
 </html>

@@ -1589,6 +1589,30 @@ function App() {
     }
   }, [])
 
+  const shouldShowLoading = !dashboard || !backgroundReady
+
+  useEffect(() => {
+    if (shouldShowLoading && !(error && !dashboard)) {
+      return undefined
+    }
+
+    const initialLoader = document.getElementById('initial-loader')
+    document.documentElement.classList.remove('initial-loading')
+
+    if (!initialLoader) {
+      return undefined
+    }
+
+    initialLoader.classList.add('initial-loader-hidden')
+    const removalTimer = window.setTimeout(() => {
+      initialLoader.remove()
+    }, 140)
+
+    return () => {
+      window.clearTimeout(removalTimer)
+    }
+  }, [dashboard, error, shouldShowLoading])
+
   let content = null
 
   if (error && !dashboard) {
@@ -1600,8 +1624,8 @@ function App() {
         </section>
       </main>
     )
-  } else if (!dashboard || !backgroundReady) {
-    content = <LoadingAnimation />
+  } else if (shouldShowLoading) {
+    content = document.getElementById('initial-loader') ? null : <LoadingAnimation />
   } else {
     const archiveData = dashboard.trends?.archive ?? []
     const liveAircraft = dashboard.liveAircraft ?? []
