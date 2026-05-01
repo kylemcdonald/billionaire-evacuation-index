@@ -79,6 +79,7 @@ npm run import:faa
 npm run seed:demo
 npm run update:daily
 npm run export:snapshot
+npm run telegram:alert
 ```
 
 ## Notes
@@ -114,3 +115,17 @@ Required account-owned token permissions for this repo:
 If you use a user-owned API token instead of an account-owned token, also include `User Details: Read` and `User Memberships: Read`. Account-owned tokens are preferred here because they act as CI service credentials rather than as copied user session state.
 
 After replacing the secret, rerun the `Deploy Pages` workflow. The old `WRANGLER_OAUTH_CONFIG` repository secret is no longer used by these workflows.
+
+### Telegram emergency alerts
+
+Set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, and `TELEGRAM_CHANNEL` in `.env` for the Node server runtime. For the scheduled public refresh workflows, set the same values as GitHub repository secrets.
+
+After each successful heatmap refresh, the backend builds the current dashboard signal. If the emergency level is 5, it posts:
+
+```text
+emergency level 5!
+521 airborne (+121 above expected)
+https://ews.kylemcdonald.net/
+```
+
+The last alerted heatmap slot is stored in SQLite so the same slot is not reposted after a restart or retry. Run `npm run telegram:alert -- --dry-run` to verify the current alert decision without posting.

@@ -12,6 +12,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TELEGRAM_BOT_USERNAME: ${{ secrets.TELEGRAM_BOT_USERNAME }}
+  TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
   PUBLIC_BUCKET: ews-public
   STATE_BUCKET: ews-state
 
@@ -64,6 +67,9 @@ jobs:
 
       - name: Export published dashboard snapshot
         run: node scripts/export_dashboard_snapshot.js --output tmp/dashboard.json
+
+      - name: Send Telegram emergency alert
+        run: node scripts/send_telegram_alert.js
 
       - name: Upload deployment state
         run: |

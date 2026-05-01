@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const express = require("express");
 const cors = require("cors");
+const { loadEnvFile } = require("./env");
 const { CLIENT_DIST_DIR, readWatchlist } = require("./config");
 const {
   initDb,
@@ -12,6 +13,9 @@ const {
 } = require("./db");
 const { createHeatmapCacheRefresher } = require("./heatmap-cache");
 const { buildDashboardSnapshot } = require("./dashboard");
+const { maybeSendEmergencyLevelTelegramAlert } = require("./telegram-alert");
+
+loadEnvFile();
 
 const app = express();
 const PORT = Number(process.env.PORT || 3030);
@@ -96,7 +100,22 @@ const heatmapRefresher = createHeatmapCacheRefresher({
       return;
     }
 
-    void dashboardSnapshotManager.refresh({ reason: "heatmap_refresh" });
+    void dashboardSnapshotManager
+      .refresh({ reason: "heatmap_refresh" })
+      .then((snapshot) =>
+        maybeSendEmergencyLevelTelegramAlert({
+          snapshot,
+          status: heatmapRefresher.getStatus(),
+        }),
+      )
+      .then((result) => {
+        if (result?.sent) {
+          console.log(`Telegram emergency alert sent for ${result.latestSlotKey || "latest heatmap"}.`);
+        }
+      })
+      .catch((error) => {
+        console.error("Telegram emergency alert failed:", error);
+      });
   },
 });
 
