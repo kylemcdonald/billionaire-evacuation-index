@@ -191,6 +191,13 @@ html.emergency-color-scheme .app-shell :is(h1, h2, .chart-subsection-header stro
   color: #ff0000 !important;
 }
 
+@supports (color: color(display-p3 1 0 0)) {
+  html.emergency-color-scheme .app-shell :is(h1, h2, .chart-subsection-header strong, .map-hover-header strong) {
+    color: color(display-p3 1 0 0) !important;
+    -webkit-text-fill-color: color(display-p3 1 0 0);
+  }
+}
+
 html.emergency-color-scheme :is(
   .hero-copy,
   .panel-lede,
