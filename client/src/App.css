@@ -496,6 +496,8 @@ html.emergency-color-scheme .archive-chart-svg [stroke="#ffffff"] {
   min-height: 380px;
   padding: 8px 0 0;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .map-controls {
@@ -573,10 +575,18 @@ html.emergency-color-scheme .map-control-button:hover {
   overflow: hidden;
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
 }
 
 .map-svg:active {
   cursor: grabbing;
+}
+
+.map-frame ::selection {
+  background: transparent;
+  color: inherit;
 }
 
 .map-hover-card {
@@ -645,6 +655,12 @@ html.emergency-color-scheme .map-control-button:hover {
   fill: rgba(0, 0, 255, 0.08);
   stroke: none;
   animation: pulse 2.1s ease-in-out infinite;
+}
+
+.map-marker-visual {
+  transform: scale(var(--map-marker-scale, 1));
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .map-marker-plane {
@@ -1094,12 +1110,10 @@ html.emergency-color-scheme .map-control-button:hover {
 @keyframes pulse {
   0%,
   100% {
-    transform: scale(0.8);
-    opacity: 0.6;
+    opacity: 0.42;
   }
   50% {
-    transform: scale(1.18);
-    opacity: 1;
+    opacity: 0.86;
   }
 }
 
