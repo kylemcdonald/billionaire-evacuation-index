@@ -27,8 +27,6 @@ const NARROW_HISTORY_BREAKPOINT = 820
 const CHART_TICK_COLOR = '#000000'
 const CHART_GRID_COLOR = '#d4d4d4'
 const CHART_PRIMARY_COLOR = '#0000ee'
-const CHART_SECONDARY_COLOR = '#808080'
-const CHART_LONG_WINDOW_SECONDARY_COLOR = 'rgba(128, 128, 128, 0.48)'
 const CHART_PREDICTION_BAND_FILL = 'rgba(128, 128, 128, 0.18)'
 const CHART_HOLIDAY_REGION_FILL = 'rgba(255, 196, 0, 0.16)'
 const CHART_HOLIDAY_REGION_STROKE = 'rgba(160, 112, 0, 0.34)'
@@ -1892,10 +1890,8 @@ function ArchiveChartPanel({ data, signal, holidayWindows, defaultWindowDays, co
   const startDaysAgo = clampedEndDaysAgo + effectiveWindowDays
   const sliderValue = maxArchivePositionStep - currentArchivePositionStep
   const sliderPercent = maxArchivePositionStep > 0 ? (sliderValue / maxArchivePositionStep) * 100 : 100
-  const isLongWindow = effectiveWindowDays >= 28
   const isDenseWindow = archiveWindowDays >= 28
   const primaryLineWidth = isDenseWindow ? 1.45 : 2.5
-  const secondaryLineWidth = isDenseWindow ? 1.15 : 2
   const referenceLineWidth = isDenseWindow ? 0.75 : 1
   const signalUsesPredictionBandModel = PREDICTION_BAND_MODELS.has(signal?.concurrentPredictionModel)
 
@@ -2084,13 +2080,6 @@ function ArchiveChartPanel({ data, signal, holidayWindows, defaultWindowDays, co
               accessor: (sample) => sample.concurrentCount,
               stroke: CHART_PRIMARY_COLOR,
               strokeWidth: primaryLineWidth,
-            },
-            {
-              name: 'Predicted concurrent',
-              accessor: (sample) => sample.predictedConcurrentCount,
-              stroke: isLongWindow ? CHART_LONG_WINDOW_SECONDARY_COLOR : CHART_SECONDARY_COLOR,
-              strokeWidth: secondaryLineWidth,
-              strokeDasharray: showPredictionStdDevBand || isLongWindow ? undefined : '7 6',
             },
           ]}
           tooltipFormatter={(sample) => (
