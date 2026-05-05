@@ -2291,7 +2291,6 @@ function DashboardApp({ dashboardUrl = DASHBOARD_URL }) {
               <a href="https://github.com/kylemcdonald/ews" target="_blank" rel="noreferrer">
                 GitHub
               </a>{' '}
-              / <a href="/signup/">SMS/Email Signup</a>{' '}
               /{' '}
               <a href="https://t.me/apocalypse_ews" target="_blank" rel="noreferrer">
                 Telegram Notifications
