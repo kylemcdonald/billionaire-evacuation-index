@@ -3282,6 +3282,10 @@ function UpdatesCard({ copy }) {
       </div>
       <div className="updates-copy">
         <article className="update-entry">
+          <h3>May 7, 2026</h3>
+          <p>Added subscriptions for SMS/email notifications. The main map has been rebuilt with MapLibre, which should work better on more devices.</p>
+        </article>
+        <article className="update-entry">
           <h3>May 5, 2026</h3>
           <p>
             The dashboard now uses the {copy.sourceShort} dataset, a dense-history weekly baseline, U.S. federal
