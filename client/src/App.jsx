@@ -3692,9 +3692,8 @@ function SignupPage() {
             </p>
             <p>
               <em>
-                Signup info may be temporarily stored for up to 24 hours to allow checkout to complete, then deleted if
-                unfinished. Contact info is only used for alerts and related account communication, never sold or used
-                for marketing. Update or cancel your subscription using{' '}
+                Contact info is only used for alerts and subscription updates, not sold or used for marketing, and old
+                info is deleted. Update or cancel your subscription using{' '}
                 <a href="https://billing.stripe.com/p/login/6oU7sL14I6ewbuL2dJ4ow00">the portal</a>. If you have
                 questions about your subscription, please{' '}
                 <a href="mailto:ews@kylemcdonald.net">email me</a>.
