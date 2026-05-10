@@ -38,6 +38,8 @@ const PREDICTION_BAND_MODELS = new Set([
 const LOADING_ANIMATION_URL = '/animation.mp4'
 const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.webp'
 const BACKGROUND_PRELOAD_LINK_ID = 'background-preload'
+const SUBSCRIBERS_PER_PAGE = 20
+const SUBSCRIPTION_GROSS_DOLLARS = 5
 const ARCHIVE_CHART_WIDTH = 960
 const ARCHIVE_CHART_MOBILE_WIDTH = 440
 const ARCHIVE_CHART_HEIGHT = 320
@@ -3417,6 +3419,165 @@ function getSubscriberFields(subscriber) {
   ]
 }
 
+function parseSubscriberTimestamp(value) {
+  const timestamp = Date.parse(value || '')
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function formatSubscriberDateKey(timestamp) {
+  const date = new Date(timestamp)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function getSubscriberChartTimestamp(subscriber) {
+  if (subscriber.status === 'active') {
+    return parseSubscriberTimestamp(subscriber.checkoutCompletedAt) ??
+      parseSubscriberTimestamp(subscriber.checkoutCreatedAt) ??
+      parseSubscriberTimestamp(subscriber.createdAt)
+  }
+
+  if (subscriber.status === 'canceled') {
+    return parseSubscriberTimestamp(subscriber.canceledAt) ??
+      parseSubscriberTimestamp(subscriber.updatedAt) ??
+      parseSubscriberTimestamp(subscriber.createdAt)
+  }
+
+  return parseSubscriberTimestamp(subscriber.checkoutCreatedAt) ??
+    parseSubscriberTimestamp(subscriber.createdAt) ??
+    parseSubscriberTimestamp(subscriber.updatedAt)
+}
+
+function buildSubscriberDailyStats(subscribers) {
+  const byDay = new Map()
+
+  for (const subscriber of subscribers) {
+    const timestamp = getSubscriberChartTimestamp(subscriber)
+    if (!Number.isFinite(timestamp)) {
+      continue
+    }
+
+    const day = formatSubscriberDateKey(timestamp)
+    const stats = byDay.get(day) || {
+      day,
+      active: 0,
+      pending: 0,
+      canceled: 0,
+      email: 0,
+      sms: 0,
+      both: 0,
+      grossVolume: 0,
+    }
+
+    if (subscriber.status === 'active') {
+      stats.active += 1
+    } else if (subscriber.status === 'pending_checkout') {
+      stats.pending += 1
+    } else if (subscriber.status === 'canceled') {
+      stats.canceled += 1
+    }
+
+    if (subscriber.wantsEmail) {
+      stats.email += 1
+    }
+    if (subscriber.wantsSms) {
+      stats.sms += 1
+    }
+    if (subscriber.wantsEmail && subscriber.wantsSms) {
+      stats.both += 1
+    }
+
+    stats.grossVolume = stats.active * SUBSCRIPTION_GROSS_DOLLARS
+    byDay.set(day, stats)
+  }
+
+  return Array.from(byDay.values()).sort((left, right) => left.day.localeCompare(right.day))
+}
+
+function formatGrossVolume(value) {
+  return `$${formatCount(value)}`
+}
+
+function SubscriberDailyChart({ title, data, series, valueFormatter = formatCount }) {
+  const width = 760
+  const height = 220
+  const margin = { top: 18, right: 16, bottom: 34, left: 52 }
+  const chartWidth = width - margin.left - margin.right
+  const chartHeight = height - margin.top - margin.bottom
+  const maxValue = Math.max(
+    1,
+    ...data.flatMap((item) => series.map((entry) => Number(item[entry.key] || 0))).filter(Number.isFinite),
+  )
+  const yTicks = buildNumericTicks(0, maxValue, 4).filter((tick) => tick >= 0)
+  const xScale = (index) =>
+    margin.left + (data.length <= 1 ? chartWidth / 2 : (index / Math.max(1, data.length - 1)) * chartWidth)
+  const yScale = (value) => margin.top + chartHeight - (Number(value || 0) / Math.max(1, maxValue)) * chartHeight
+  const labelEvery = Math.max(1, Math.ceil(data.length / 8))
+
+  return (
+    <section className="subscriber-chart-card" aria-label={title}>
+      <div className="subscriber-chart-heading">
+        <h3>{title}</h3>
+        <div className="subscriber-chart-legend">
+          {series.map((entry) => (
+            <span key={entry.key}>
+              <i style={{ background: entry.color }} />
+              {entry.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      {data.length ? (
+        <svg className="subscriber-chart-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
+          <rect x={margin.left} y={margin.top} width={chartWidth} height={chartHeight} fill="#ffffff" />
+          {yTicks.map((tick) => (
+            <g key={tick}>
+              <line
+                x1={margin.left}
+                x2={margin.left + chartWidth}
+                y1={yScale(tick)}
+                y2={yScale(tick)}
+                stroke="#d4d4d4"
+              />
+              <text x={margin.left - 8} y={yScale(tick) + 4} textAnchor="end">
+                {valueFormatter(tick)}
+              </text>
+            </g>
+          ))}
+          {data.map((item, index) =>
+            index % labelEvery === 0 || index === data.length - 1 ? (
+              <text key={item.day} x={xScale(index)} y={height - 8} textAnchor="middle">
+                {item.day.slice(5)}
+              </text>
+            ) : null,
+          )}
+          {series.map((entry) => (
+            <path
+              key={entry.key}
+              d={buildSvgLinePath(data, xScale, yScale, (item) => item[entry.key])}
+              fill="none"
+              stroke={entry.color}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+          {series.map((entry) =>
+            data.map((item, index) => (
+              <circle key={`${entry.key}-${item.day}`} cx={xScale(index)} cy={yScale(item[entry.key])} r="3" fill={entry.color} />
+            )),
+          )}
+        </svg>
+      ) : (
+        <p className="empty-state">No subscriber history to plot.</p>
+      )}
+    </section>
+  )
+}
+
 function SignupPage() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -3636,7 +3797,17 @@ function AdminTestAlertPage() {
   const [subscriberRecords, setSubscriberRecords] = useState([])
   const [subscriberLoading, setSubscriberLoading] = useState(false)
   const [subscriberStatus, setSubscriberStatus] = useState(null)
+  const [subscriberPage, setSubscriberPage] = useState(1)
   const subscriberSummary = useMemo(() => getSubscriberSummary(subscriberRecords), [subscriberRecords])
+  const subscriberDailyStats = useMemo(() => buildSubscriberDailyStats(subscriberRecords), [subscriberRecords])
+  const subscriberPageCount = Math.max(1, Math.ceil(subscriberRecords.length / SUBSCRIBERS_PER_PAGE))
+  const normalizedSubscriberPage = clamp(subscriberPage, 1, subscriberPageCount)
+  const subscriberPageStartIndex = (normalizedSubscriberPage - 1) * SUBSCRIBERS_PER_PAGE
+  const subscriberPageRecords = subscriberRecords.slice(
+    subscriberPageStartIndex,
+    subscriberPageStartIndex + SUBSCRIBERS_PER_PAGE,
+  )
+  const subscriberPageEndIndex = Math.min(subscriberRecords.length, subscriberPageStartIndex + subscriberPageRecords.length)
 
   useInitialLoaderDismissed()
 
@@ -3653,6 +3824,12 @@ function AdminTestAlertPage() {
       document.title = previousTitle
     }
   }, [adminView])
+
+  useEffect(() => {
+    if (subscriberPage !== normalizedSubscriberPage) {
+      setSubscriberPage(normalizedSubscriberPage)
+    }
+  }, [normalizedSubscriberPage, subscriberPage])
 
   async function loadRecentDeliveries() {
     try {
@@ -3676,6 +3853,7 @@ function AdminTestAlertPage() {
         throw new Error(payload.error || 'Could not load subscriber database.')
       }
       setSubscriberRecords(payload.subscribers)
+      setSubscriberPage(1)
     } catch (error) {
       setSubscriberStatus({
         tone: 'error',
@@ -3901,68 +4079,122 @@ function AdminTestAlertPage() {
                 <span>Email: {subscriberSummary.wantsEmail}</span>
                 <span>SMS: {subscriberSummary.wantsSms}</span>
                 <span>Both: {subscriberSummary.wantsBoth}</span>
+                <span>Gross: {formatGrossVolume(subscriberSummary.active * SUBSCRIPTION_GROSS_DOLLARS)}</span>
+              </div>
+
+              <div className="subscriber-chart-grid" aria-label="Subscriber daily charts">
+                <SubscriberDailyChart
+                  title="Daily Subscription Status"
+                  data={subscriberDailyStats}
+                  series={[
+                    { key: 'active', label: 'Active', color: '#00703c' },
+                    { key: 'pending', label: 'Pending', color: '#8a5a00' },
+                    { key: 'canceled', label: 'Canceled', color: '#b00020' },
+                  ]}
+                />
+                <SubscriberDailyChart
+                  title="Daily Contact Channels"
+                  data={subscriberDailyStats}
+                  series={[
+                    { key: 'email', label: 'Email', color: '#0000ee' },
+                    { key: 'sms', label: 'SMS', color: '#7b2cbf' },
+                    { key: 'both', label: 'Both', color: '#008c8c' },
+                  ]}
+                />
+                <SubscriberDailyChart
+                  title="Daily Gross Volume"
+                  data={subscriberDailyStats}
+                  valueFormatter={formatGrossVolume}
+                  series={[{ key: 'grossVolume', label: 'Active x $5', color: '#111111' }]}
+                />
               </div>
 
               {subscriberRecords.length ? (
-                <div className="subscriber-table-wrap">
-                  <table className="subscriber-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Contact</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Stripe</th>
-                        <th scope="col">Dates</th>
-                        <th scope="col">Deliveries</th>
-                        <th scope="col">All Fields</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {subscriberRecords.map((subscriber) => (
-                        <tr key={subscriber.id}>
-                          <td>
-                            <strong>{formatAdminValue(subscriber.email || subscriber.phone)}</strong>
-                            <span>{formatAdminValue(subscriber.email && subscriber.phone ? subscriber.phone : null)}</span>
-                            <span>{subscriber.id}</span>
-                          </td>
-                          <td>
-                            <strong>{formatAdminValue(subscriber.status)}</strong>
-                            <span>Email: {formatAdminValue(subscriber.wantsEmail)}</span>
-                            <span>SMS: {formatAdminValue(subscriber.wantsSms)}</span>
-                          </td>
-                          <td>
-                            <span>Customer: {formatAdminValue(subscriber.stripeCustomerId)}</span>
-                            <span>Subscription: {formatAdminValue(subscriber.stripeSubscriptionId)}</span>
-                            <span>Checkout: {formatAdminValue(subscriber.stripeCheckoutSessionId)}</span>
-                          </td>
-                          <td>
-                            <span>Created: {formatAdminValue(subscriber.createdAt)}</span>
-                            <span>Updated: {formatAdminValue(subscriber.updatedAt)}</span>
-                            <span>Period end: {formatAdminValue(subscriber.currentPeriodEnd)}</span>
-                          </td>
-                          <td>
-                            <span>Total: {formatAdminValue(subscriber.deliveryCount)}</span>
-                            <span>Email: {formatAdminValue(subscriber.emailDeliveryCount)}</span>
-                            <span>SMS: {formatAdminValue(subscriber.smsDeliveryCount)}</span>
-                            <span>Errors: {formatAdminValue(subscriber.deliveryErrorCount)}</span>
-                          </td>
-                          <td>
-                            <details className="subscriber-details">
-                              <summary>View</summary>
-                              <dl>
-                                {getSubscriberFields(subscriber).map(([key, value]) => (
-                                  <div key={key}>
-                                    <dt>{key}</dt>
-                                    <dd>{formatAdminValue(value)}</dd>
-                                  </div>
-                                ))}
-                              </dl>
-                            </details>
-                          </td>
+                <>
+                  <div className="subscriber-pagination" aria-label="Subscriber pagination">
+                    <span>
+                      Showing {subscriberPageStartIndex + 1}-{subscriberPageEndIndex} of {subscriberRecords.length}
+                    </span>
+                    <div>
+                      <button
+                        type="button"
+                        disabled={normalizedSubscriberPage <= 1}
+                        onClick={() => setSubscriberPage((page) => Math.max(1, page - 1))}
+                      >
+                        Previous
+                      </button>
+                      <span>
+                        Page {normalizedSubscriberPage} of {subscriberPageCount}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={normalizedSubscriberPage >= subscriberPageCount}
+                        onClick={() => setSubscriberPage((page) => Math.min(subscriberPageCount, page + 1))}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                  <div className="subscriber-table-wrap">
+                    <table className="subscriber-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Contact</th>
+                          <th scope="col">Status</th>
+                          <th scope="col">Stripe</th>
+                          <th scope="col">Dates</th>
+                          <th scope="col">Deliveries</th>
+                          <th scope="col">All Fields</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {subscriberPageRecords.map((subscriber) => (
+                          <tr key={subscriber.id}>
+                            <td>
+                              <strong>{formatAdminValue(subscriber.email || subscriber.phone)}</strong>
+                              <span>{formatAdminValue(subscriber.email && subscriber.phone ? subscriber.phone : null)}</span>
+                              <span>{subscriber.id}</span>
+                            </td>
+                            <td>
+                              <strong>{formatAdminValue(subscriber.status)}</strong>
+                              <span>Email: {formatAdminValue(subscriber.wantsEmail)}</span>
+                              <span>SMS: {formatAdminValue(subscriber.wantsSms)}</span>
+                            </td>
+                            <td>
+                              <span>Customer: {formatAdminValue(subscriber.stripeCustomerId)}</span>
+                              <span>Subscription: {formatAdminValue(subscriber.stripeSubscriptionId)}</span>
+                              <span>Checkout: {formatAdminValue(subscriber.stripeCheckoutSessionId)}</span>
+                            </td>
+                            <td>
+                              <span>Created: {formatAdminValue(subscriber.createdAt)}</span>
+                              <span>Updated: {formatAdminValue(subscriber.updatedAt)}</span>
+                              <span>Period end: {formatAdminValue(subscriber.currentPeriodEnd)}</span>
+                            </td>
+                            <td>
+                              <span>Total: {formatAdminValue(subscriber.deliveryCount)}</span>
+                              <span>Email: {formatAdminValue(subscriber.emailDeliveryCount)}</span>
+                              <span>SMS: {formatAdminValue(subscriber.smsDeliveryCount)}</span>
+                              <span>Errors: {formatAdminValue(subscriber.deliveryErrorCount)}</span>
+                            </td>
+                            <td>
+                              <details className="subscriber-details">
+                                <summary>View</summary>
+                                <dl>
+                                  {getSubscriberFields(subscriber).map(([key, value]) => (
+                                    <div key={key}>
+                                      <dt>{key}</dt>
+                                      <dd>{formatAdminValue(value)}</dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              </details>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               ) : !subscriberLoading ? (
                 <p className="empty-state">No subscriber records found.</p>
               ) : null}

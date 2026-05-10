@@ -107,6 +107,17 @@ export async function createCheckoutSession(env, { signupId, email, priceId, bas
   ]);
 }
 
+export async function createBillingPortalSession(env, { customerId, returnUrl }) {
+  if (!customerId) {
+    throw new HttpError(400, "Missing Stripe customer ID for billing portal session.");
+  }
+
+  return stripeRequest(env, "POST", "/billing_portal/sessions", [
+    ["customer", customerId],
+    ["return_url", returnUrl],
+  ]);
+}
+
 function parseStripeSignature(signatureHeader) {
   const parts = String(signatureHeader || "").split(",");
   const parsed = {

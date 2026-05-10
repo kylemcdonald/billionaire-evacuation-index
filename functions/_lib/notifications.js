@@ -8,6 +8,7 @@ import {
   updateAlertRecord,
 } from "./db.js";
 import { contactHash } from "./crypto.js";
+import { createCustomerPortalLink } from "./customer-portal.js";
 import { basicAuth } from "./encoding.js";
 import { HttpError } from "./http.js";
 
@@ -78,6 +79,11 @@ function getPublicBaseUrl(env) {
   return String(env.APP_BASE_URL || env.EWS_PUBLIC_URL || DEFAULT_ALERT_URL)
     .trim()
     .replace(/\/+$/, "");
+}
+
+async function appendCustomerPortalLink(env, subscriber, messageText) {
+  const portalUrl = await createCustomerPortalLink(env, subscriber);
+  return `${messageText}\n\nManage or cancel your subscription: ${portalUrl}`;
 }
 
 function getSmsStatusCallbackUrl(env) {
@@ -215,7 +221,19 @@ async function sendDelivery(env, { alertId, subscriberId, channel, destination, 
   }
 }
 
-async function sendAlertToSubscribers(env, { alertId, subscribers, messageText, subject }) {
+async function recordDeliveryPreparationFailure(env, { alertId, subscriberId, channel, destination, error }) {
+  const destinationHash = await contactHash(env, channel === "sms" ? "phone" : channel, destination);
+  await recordDelivery(env, {
+    alertId,
+    subscriberId,
+    channel,
+    destinationHash,
+    status: "failed",
+    error: error.message,
+  });
+}
+
+async function sendAlertToSubscribers(env, { alertId, subscribers, messageText, subject, includeCustomerPortalLinks = false }) {
   const summary = {
     subscriberCount: subscribers.length,
     emailSentCount: 0,
@@ -226,12 +244,29 @@ async function sendAlertToSubscribers(env, { alertId, subscribers, messageText, 
   for (const subscriber of subscribers) {
     const hydrated = await hydrateSubscriberContacts(env, subscriber);
     if (hydrated.wantsEmail && hydrated.email) {
+      let emailText = messageText;
+      try {
+        if (includeCustomerPortalLinks) {
+          emailText = await appendCustomerPortalLink(env, hydrated, messageText);
+        }
+      } catch (error) {
+        await recordDeliveryPreparationFailure(env, {
+          alertId,
+          subscriberId: hydrated.id,
+          channel: "email",
+          destination: hydrated.email,
+          error,
+        });
+        summary.errorCount += 1;
+        continue;
+      }
+
       const result = await sendDelivery(env, {
         alertId,
         subscriberId: hydrated.id,
         channel: "email",
         destination: hydrated.email,
-        text: messageText,
+        text: emailText,
         subject,
       });
       if (result.ok) {
@@ -301,6 +336,7 @@ export async function maybeSendLevel5Notifications(env, snapshot, { source = "sc
     subscribers,
     messageText,
     subject: "Apocalypse EWS: emergency level 5",
+    includeCustomerPortalLinks: true,
   });
 
   await setMetaValue(env, LEVEL5_COOLDOWN_META_KEY, new Date().toISOString());
@@ -330,6 +366,7 @@ export async function sendAdminTestToAll(env, snapshot) {
     subscribers,
     messageText,
     subject: "TEST: Apocalypse EWS emergency alert",
+    includeCustomerPortalLinks: true,
   });
 
   return {

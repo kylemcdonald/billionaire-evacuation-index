@@ -964,6 +964,89 @@ html.emergency-color-scheme .map-control-button:hover:not(:disabled) {
   overflow-wrap: anywhere;
 }
 
+.subscriber-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.subscriber-chart-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #cccccc;
+  background: #ffffff;
+}
+
+.subscriber-chart-heading {
+  display: grid;
+  gap: 6px;
+}
+
+.subscriber-chart-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.subscriber-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+}
+
+.subscriber-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.subscriber-chart-legend i {
+  display: inline-block;
+  width: 12px;
+  height: 3px;
+}
+
+.subscriber-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-size: 11px;
+}
+
+.subscriber-chart-svg text {
+  fill: #000000;
+}
+
+.subscriber-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.subscriber-pagination div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subscriber-pagination button {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #999999;
+  background: #ffffff;
+  color: #000000;
+  cursor: pointer;
+}
+
+.subscriber-pagination button:disabled {
+  color: #777777;
+  cursor: not-allowed;
+}
+
 .signup-status {
   margin: 0;
   padding: 10px 12px;
@@ -1626,6 +1709,10 @@ html.emergency-color-scheme .map-control-button:hover:not(:disabled) {
   .tertiary-grid,
   .focus-map-grid,
   .details-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .subscriber-chart-grid {
     grid-template-columns: 1fr;
   }
 }

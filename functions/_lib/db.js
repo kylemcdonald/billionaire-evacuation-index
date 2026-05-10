@@ -18,6 +18,48 @@ function getDb(env) {
   return env.EWS_NOTIFY_DB;
 }
 
+function shouldUseRemoteSubscriberReads(env) {
+  return String(env.ADMIN_SUBSCRIBERS_REMOTE_D1 || "").trim() === "1";
+}
+
+async function remoteD1Query(env, sql, params = []) {
+  const apiToken = String(env.CLOUDFLARE_API_TOKEN || "").trim();
+  const accountId = String(env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+  const databaseId = String(env.CLOUDFLARE_D1_DATABASE_ID || "").trim();
+  if (!apiToken || !accountId || !databaseId) {
+    throw new HttpError(500, "Missing Cloudflare API settings for remote D1 subscriber reads.");
+  }
+
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        sql,
+        params,
+      }),
+    },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.success) {
+    throw new HttpError(
+      response.status >= 500 ? 502 : response.status,
+      payload.errors?.[0]?.message || `Cloudflare D1 query failed with ${response.status}.`,
+    );
+  }
+
+  const result = payload.result?.[0];
+  if (!result?.success) {
+    throw new HttpError(502, result?.error || "Cloudflare D1 query failed.");
+  }
+
+  return result.results || [];
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -664,9 +706,7 @@ export async function getRecentAlertDeliveries(env, limit = 25) {
 }
 
 export async function getAdminSubscriberRecords(env) {
-  const { results } = await getDb(env)
-    .prepare(
-      `
+  const query = `
         SELECT
           s.*,
           COUNT(d.id) AS delivery_count,
@@ -685,9 +725,10 @@ export async function getAdminSubscriberRecords(env) {
             ELSE 3
           END,
           s.updated_at DESC
-      `,
-    )
-    .all();
+      `;
+  const results = shouldUseRemoteSubscriberReads(env)
+    ? await remoteD1Query(env, query)
+    : (await getDb(env).prepare(query).all()).results;
 
   return Promise.all(
     (results || []).map(async (row) => {
@@ -731,6 +772,26 @@ export async function getAdminSubscriberRecords(env) {
       };
     }),
   );
+}
+
+export async function getSubscriberForCustomerPortal(env, subscriberId) {
+  if (!subscriberId) {
+    return null;
+  }
+
+  return getDb(env)
+    .prepare(
+      `
+        SELECT
+          id,
+          status,
+          stripe_customer_id
+        FROM notification_signups
+        WHERE id = ?
+      `,
+    )
+    .bind(subscriberId)
+    .first();
 }
 
 export async function updateDeliveryByProviderMessageId(env, providerMessageId, { status, error = null }) {
