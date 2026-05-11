@@ -44,6 +44,8 @@ const BACKGROUND_PRELOAD_LINK_ID = 'background-preload'
 const SUBSCRIBERS_PER_PAGE = 20
 const SUBSCRIPTION_GROSS_DOLLARS = 5
 const PHONE_VALIDATION_MESSAGE = 'Enter a valid phone number. Use 10 digits for US/Canada, or + and country code for international numbers.'
+const NON_US_CANADA_PHONE_WARNING = 'We do not currently support non-US/Canada phone numbers, continue anyway?'
+const SUPPORTED_SMS_COUNTRY_CODES = new Set(['US', 'CA'])
 const ARCHIVE_CHART_WIDTH = 960
 const ARCHIVE_CHART_MOBILE_WIDTH = 440
 const ARCHIVE_CHART_HEIGHT = 320
@@ -284,6 +286,11 @@ function normalizePhoneInput(value) {
   }
 
   return parsed.number
+}
+
+function isSupportedSmsCountry(phone) {
+  const parsed = parsePhoneNumberFromString(phone)
+  return SUPPORTED_SMS_COUNTRY_CODES.has(parsed?.country)
 }
 
 function formatCount(value) {
@@ -3810,6 +3817,14 @@ function SignupPage() {
       setStatus({
         tone: 'error',
         message: 'Check the SMS consent box before submitting a phone number.',
+      })
+      return
+    }
+
+    if (normalizedPhone && !isSupportedSmsCountry(normalizedPhone) && !window.confirm(NON_US_CANADA_PHONE_WARNING)) {
+      setStatus({
+        tone: 'error',
+        message: 'Signup paused. Use a US/Canada number, or submit again and confirm to continue.',
       })
       return
     }
