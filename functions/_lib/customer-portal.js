@@ -10,6 +10,12 @@ export function getPublicBaseUrl(env) {
     .replace(/\/+$/, "");
 }
 
+function normalizeBaseUrl(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
+}
+
 export function getSubscriberStripeCustomerId(subscriber) {
   return subscriber?.stripe_customer_id || subscriber?.stripeCustomerId || null;
 }
@@ -32,9 +38,9 @@ async function createCustomerPortalToken(env, subscriber) {
   return hmacHex(requirePortalSecret(env), `customer_portal:${subscriber.id}:${customerId}`);
 }
 
-export async function createCustomerPortalLink(env, subscriber) {
+export async function createCustomerPortalLink(env, subscriber, options = {}) {
   const token = await createCustomerPortalToken(env, subscriber);
-  const url = new URL("/api/stripe/customer-portal", getPublicBaseUrl(env));
+  const url = new URL("/api/stripe/customer-portal", normalizeBaseUrl(options.baseUrl) || getPublicBaseUrl(env));
   url.searchParams.set("subscriber", subscriber.id);
   url.searchParams.set("token", token);
 

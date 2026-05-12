@@ -75,8 +75,12 @@ function getAlertUrl(env) {
   return String(env.EWS_NOTIFICATION_URL || DEFAULT_NOTIFICATION_URL).trim() || DEFAULT_NOTIFICATION_URL;
 }
 
+function getNotificationBaseUrl(env) {
+  return getAlertUrl(env).replace(/\/+$/, "");
+}
+
 async function appendCustomerPortalLink(env, subscriber, messageText) {
-  const portalUrl = await createCustomerPortalLink(env, subscriber);
+  const portalUrl = await createCustomerPortalLink(env, subscriber, { baseUrl: getNotificationBaseUrl(env) });
   return `${messageText}\n\nManage or cancel your subscription: ${portalUrl}`;
 }
 
