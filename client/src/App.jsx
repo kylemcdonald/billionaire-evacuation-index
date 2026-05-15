@@ -4289,15 +4289,11 @@ function ManageSubscriptionPage() {
                   </button>
                 ) : null}
 
-                <div className="manual-result" aria-label="Current notification settings">
-                  <span>Status: {formatAdminValue(subscriber.status)}</span>
-                  <span>Source: {formatAdminValue(subscriber.source)}</span>
-                  <span>SMS country: {formatAdminValue(subscriber.phoneCountryName)}</span>
-                  {subscriber.hasStripeSubscription ? (
-                    <span>Renews: {formatAdminValue(!subscriber.stripeCancelAtPeriodEnd)}</span>
-                  ) : null}
-                  {subscriber.stripeBillingPortalUrl ? <a href={subscriber.stripeBillingPortalUrl}>Stripe billing portal</a> : null}
-                </div>
+                {subscriber.stripeBillingPortalUrl ? (
+                  <p className="signup-repeat">
+                    <a href={subscriber.stripeBillingPortalUrl}>Stripe billing portal</a>
+                  </p>
+                ) : null}
               </>
             ) : null}
           </section>
