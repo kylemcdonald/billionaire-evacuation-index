@@ -3583,6 +3583,38 @@ function getSubscriberFields(subscriber) {
   ]
 }
 
+function getSubscriberSignupNotificationChannels(subscriber) {
+  if (!subscriber || subscriber.status !== 'active') {
+    return { email: false, sms: false }
+  }
+
+  const email = Boolean((subscriber.accountEmail || subscriber.email) && !subscriber.welcomeEmailSentAt)
+  const sms = Boolean(
+    subscriber.wantsSms && subscriber.phone && isSupportedSmsCountry(subscriber.phone) && !subscriber.welcomeSmsSentAt,
+  )
+
+  return { email, sms }
+}
+
+function getSubscriberSignupNotificationDisabledReason(subscriber) {
+  if (!subscriber || subscriber.status !== 'active') {
+    return 'Signup notifications can only be sent to active subscribers.'
+  }
+
+  const hasEmailChannel = Boolean(subscriber.accountEmail || subscriber.email)
+  const hasSmsChannel = Boolean(subscriber.wantsSms && subscriber.phone && isSupportedSmsCountry(subscriber.phone))
+  if (!hasEmailChannel && !hasSmsChannel) {
+    return 'No supported notification channel is available.'
+  }
+
+  const { email, sms } = getSubscriberSignupNotificationChannels(subscriber)
+  if (!email && !sms) {
+    return 'Signup notification already sent.'
+  }
+
+  return ''
+}
+
 function parseSubscriberTimestamp(value) {
   const timestamp = Date.parse(value || '')
   return Number.isFinite(timestamp) ? timestamp : null
@@ -4329,6 +4361,7 @@ function AdminTestAlertPage() {
   const [subscriberLoading, setSubscriberLoading] = useState(false)
   const [subscriberStatus, setSubscriberStatus] = useState(null)
   const [subscriberPage, setSubscriberPage] = useState(1)
+  const [subscriberNotifyId, setSubscriberNotifyId] = useState('')
   const [manualAccountEmail, setManualAccountEmail] = useState('')
   const [manualAlertEmail, setManualAlertEmail] = useState('')
   const [manualPhone, setManualPhone] = useState('')
@@ -4607,6 +4640,51 @@ function AdminTestAlertPage() {
       setWelcomeStatus({ tone: 'error', message: error.message })
     } finally {
       setWelcomeSubmitting(false)
+    }
+  }
+
+  async function sendSubscriberSignupNotification(subscriber) {
+    const channels = getSubscriberSignupNotificationChannels(subscriber)
+    if (!channels.email && !channels.sms) {
+      setSubscriberStatus({
+        tone: 'success',
+        message: getSubscriberSignupNotificationDisabledReason(subscriber) || 'Signup notification already sent.',
+      })
+      return
+    }
+
+    setSubscriberNotifyId(subscriber.id)
+    setSubscriberStatus({ tone: 'success', message: `Sending signup notification for ${subscriber.id}...` })
+
+    try {
+      const response = await fetch('/api/admin/subscribers', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_signup_confirmation',
+          subscriberId: subscriber.id,
+          email: channels.email,
+          sms: channels.sms,
+          skipAlreadySent: true,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload.error || 'Could not send signup notification.')
+      }
+
+      const result = payload.result || {}
+      setSubscriberStatus({
+        tone: result.ok ? 'success' : 'error',
+        message: `Signup notification ${result.alertId || ''} completed. Email accepted: ${
+          result.emailSentCount || 0
+        }. SMS accepted: ${result.smsSentCount || 0}. Errors: ${result.errorCount || 0}.`,
+      })
+      loadSubscriberRecords(normalizedSubscriberPage)
+    } catch (error) {
+      setSubscriberStatus({ tone: 'error', message: error.message })
+    } finally {
+      setSubscriberNotifyId('')
     }
   }
 
@@ -5077,13 +5155,27 @@ function AdminTestAlertPage() {
                               <span>Errors: {formatAdminValue(subscriber.deliveryErrorCount)}</span>
                             </td>
                             <td>
-                              {subscriber.managementUrl ? (
-                                <a className="subscriber-action-link" href={subscriber.managementUrl}>
-                                  Edit
-                                </a>
-                              ) : (
-                                <span>{formatAdminValue(null)}</span>
-                              )}
+                              <div className="subscriber-actions">
+                                {subscriber.managementUrl ? (
+                                  <a className="subscriber-action-link" href={subscriber.managementUrl}>
+                                    Edit
+                                  </a>
+                                ) : (
+                                  <span>{formatAdminValue(null)}</span>
+                                )}
+                                <button
+                                  className="subscriber-action-link subscriber-action-button"
+                                  type="button"
+                                  disabled={
+                                    Boolean(subscriberNotifyId) ||
+                                    Boolean(getSubscriberSignupNotificationDisabledReason(subscriber))
+                                  }
+                                  title={getSubscriberSignupNotificationDisabledReason(subscriber) || undefined}
+                                  onClick={() => sendSubscriberSignupNotification(subscriber)}
+                                >
+                                  {subscriberNotifyId === subscriber.id ? 'Sending...' : 'Send signup notification'}
+                                </button>
+                              </div>
                             </td>
                             <td>
                               <details className="subscriber-details">

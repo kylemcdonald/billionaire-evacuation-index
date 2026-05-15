@@ -55,6 +55,7 @@ export async function onRequestPost({ request, env }) {
           email: payload.email !== false,
           sms: payload.sms !== false,
         },
+        skipAlreadySent: payload.skipAlreadySent === true,
       });
       return jsonResponse({
         ok: result.ok,
