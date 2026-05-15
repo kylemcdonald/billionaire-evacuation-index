@@ -308,7 +308,7 @@ function getSignupConfirmationEmailContent(subscriber, managementUrl) {
     if (subscriber.wantsEmail && subscriber.email) {
       bodyLines.push(`For now, we will keep you covered with emergency email alerts at ${subscriber.email}.`, "");
     } else {
-      bodyLines.push("For now, use the management link below if you want to add an alert email.", "");
+      bodyLines.push("Use the management link below if you want email alerts.", "");
     }
   } else {
     const channelSentence = formatSignupConfirmationChannelSentence(subscriber);
@@ -316,10 +316,6 @@ function getSignupConfirmationEmailContent(subscriber, managementUrl) {
       bodyLines.push(channelSentence, "");
     } else if (!subscriber.wantsEmail || !subscriber.email) {
       bodyLines.push("This email is for account management. You are not currently signed up for email alerts.", "");
-    }
-
-    if (subscriber.wantsSms && subscriber.phone && smsSupported) {
-      bodyLines.push("Reply STOP to stop SMS. Message and data rates may apply.", "");
     }
   }
 
