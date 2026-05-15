@@ -43,6 +43,8 @@ const BACKGROUND_URL = '/backgrounds/soft-cartoon-tile-15.webp'
 const BACKGROUND_PRELOAD_LINK_ID = 'background-preload'
 const SUBSCRIBERS_PER_PAGE = 20
 const SUBSCRIPTION_GROSS_DOLLARS = 5
+const BULK_SIGNUP_NOTIFICATION_BATCH_SIZE = 5
+const BULK_SIGNUP_NOTIFICATION_DELAY_MS = 2000
 const PHONE_VALIDATION_MESSAGE = 'Enter a valid phone number. Use 10 digits for US/Canada, or + and country code for international numbers.'
 const NON_US_CANADA_PHONE_WARNING = 'We do not currently support non-US/Canada phone numbers, continue anyway?'
 const SUPPORTED_SMS_COUNTRY_CODES = new Set(['US', 'CA'])
@@ -3615,6 +3617,46 @@ function getSubscriberSignupNotificationDisabledReason(subscriber) {
   return ''
 }
 
+function createEmptyBulkSignupSummary() {
+  return {
+    batches: 0,
+    scannedCount: 0,
+    sentSubscriberCount: 0,
+    skippedSubscriberCount: 0,
+    emailSentCount: 0,
+    smsSentCount: 0,
+    errorCount: 0,
+    errors: [],
+    done: false,
+    stopped: false,
+    cursor: '',
+  }
+}
+
+function addBulkSignupBatchSummary(summary, batch) {
+  const batchErrors = Array.isArray(batch.errors) ? batch.errors : []
+
+  return {
+    batches: summary.batches + 1,
+    scannedCount: summary.scannedCount + Number(batch.scannedCount || 0),
+    sentSubscriberCount: summary.sentSubscriberCount + Number(batch.sentSubscriberCount || 0),
+    skippedSubscriberCount: summary.skippedSubscriberCount + Number(batch.skippedSubscriberCount || 0),
+    emailSentCount: summary.emailSentCount + Number(batch.emailSentCount || 0),
+    smsSentCount: summary.smsSentCount + Number(batch.smsSentCount || 0),
+    errorCount: summary.errorCount + Number(batch.errorCount || 0),
+    errors: [...summary.errors, ...batchErrors].slice(-5),
+    done: Boolean(batch.done),
+    stopped: false,
+    cursor: batch.nextCursor || summary.cursor,
+  }
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, milliseconds)
+  })
+}
+
 function parseSubscriberTimestamp(value) {
   const timestamp = Date.parse(value || '')
   return Number.isFinite(timestamp) ? timestamp : null
@@ -4364,6 +4406,8 @@ function AdminTestAlertPage() {
   const [subscriberNotifyId, setSubscriberNotifyId] = useState('')
   const [subscriberSearchInput, setSubscriberSearchInput] = useState('')
   const [subscriberEmailSearch, setSubscriberEmailSearch] = useState('')
+  const [bulkSignupRunning, setBulkSignupRunning] = useState(false)
+  const [bulkSignupSummary, setBulkSignupSummary] = useState(() => createEmptyBulkSignupSummary())
   const [manualAccountEmail, setManualAccountEmail] = useState('')
   const [manualAlertEmail, setManualAlertEmail] = useState('')
   const [manualPhone, setManualPhone] = useState('')
@@ -4383,6 +4427,7 @@ function AdminTestAlertPage() {
   const normalizedSubscriberPage = clamp(subscriberPage, 1, subscriberPageCount)
   const subscriberPageStartIndex = subscriberRecords.length ? (normalizedSubscriberPage - 1) * subscriberPageSize : 0
   const subscriberPageEndIndex = subscriberRecords.length ? subscriberPageStartIndex + subscriberRecords.length : 0
+  const bulkSignupStopRef = useRef(false)
 
   useInitialLoaderDismissed()
 
@@ -4711,6 +4756,85 @@ function AdminTestAlertPage() {
     if (!subscriberEmailSearch && normalizedSubscriberPage === 1) {
       loadSubscriberRecords(1, '')
     }
+  }
+
+  async function startBulkSignupNotifications() {
+    const confirmed = window.confirm(
+      'Send signup notifications to every active subscriber who has not received one yet? This sends real email/SMS, ignores the current search filter, and runs while this browser tab stays open.',
+    )
+    if (!confirmed) {
+      return
+    }
+
+    bulkSignupStopRef.current = false
+    let summary = createEmptyBulkSignupSummary()
+    let cursor = ''
+    setBulkSignupSummary(summary)
+    setBulkSignupRunning(true)
+    setSubscriberStatus({ tone: 'success', message: 'Starting signup notification batch...' })
+
+    try {
+      while (!bulkSignupStopRef.current) {
+        const response = await fetch('/api/admin/subscribers', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            action: 'send_signup_confirmation_batch',
+            cursor,
+            limit: BULK_SIGNUP_NOTIFICATION_BATCH_SIZE,
+          }),
+        })
+        const batch = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(batch.error || 'Could not send signup notification batch.')
+        }
+
+        summary = addBulkSignupBatchSummary(summary, batch)
+        cursor = batch.nextCursor || cursor
+        setBulkSignupSummary(summary)
+        setSubscriberStatus({
+          tone: batch.ok ? 'success' : 'error',
+          message: `Signup notification batch ${summary.batches} completed. Email accepted: ${
+            summary.emailSentCount
+          }. SMS accepted: ${summary.smsSentCount}. Errors: ${summary.errorCount}.`,
+        })
+
+        if (batch.done || !batch.scannedCount) {
+          break
+        }
+
+        await wait(BULK_SIGNUP_NOTIFICATION_DELAY_MS)
+      }
+
+      if (bulkSignupStopRef.current) {
+        summary = {
+          ...summary,
+          stopped: true,
+        }
+        setBulkSignupSummary(summary)
+        setSubscriberStatus({ tone: 'success', message: 'Stopped after the current signup notification batch.' })
+      } else {
+        setSubscriberStatus({
+          tone: summary.errorCount ? 'error' : 'success',
+          message: `Signup notification loop complete. Scanned ${summary.scannedCount}; notified ${
+            summary.sentSubscriberCount
+          }; skipped ${summary.skippedSubscriberCount}; email ${summary.emailSentCount}; SMS ${
+            summary.smsSentCount
+          }; errors ${summary.errorCount}.`,
+        })
+      }
+
+      loadSubscriberRecords(normalizedSubscriberPage)
+    } catch (error) {
+      setSubscriberStatus({ tone: 'error', message: error.message })
+    } finally {
+      setBulkSignupRunning(false)
+    }
+  }
+
+  function stopBulkSignupNotifications() {
+    bulkSignupStopRef.current = true
+    setSubscriberStatus({ tone: 'success', message: 'Stopping after the current signup notification batch...' })
   }
 
   return (
@@ -5097,6 +5221,54 @@ function AdminTestAlertPage() {
                 </p>
               ) : null}
 
+              <section className="bulk-signup-card" aria-label="Bulk signup notifications">
+                <div className="bulk-signup-heading">
+                  <div>
+                    <h3>Signup Notifications</h3>
+                    <p>Rate-limited to {BULK_SIGNUP_NOTIFICATION_BATCH_SIZE} subscribers per batch.</p>
+                  </div>
+                  <div className="bulk-signup-actions">
+                    <button
+                      className="signup-submit"
+                      type="button"
+                      disabled={bulkSignupRunning}
+                      onClick={startBulkSignupNotifications}
+                    >
+                      {bulkSignupRunning ? 'Sending signup notifications...' : 'Send signup notifications to everyone'}
+                    </button>
+                    {bulkSignupRunning ? (
+                      <button className="subscriber-search-clear" type="button" onClick={stopBulkSignupNotifications}>
+                        Stop after current batch
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {bulkSignupRunning || bulkSignupSummary.batches > 0 ? (
+                  <>
+                    <div className="admin-summary-grid bulk-signup-summary" aria-label="Bulk signup notification summary">
+                      <span>Batches: {bulkSignupSummary.batches}</span>
+                      <span>Scanned: {bulkSignupSummary.scannedCount}</span>
+                      <span>Notified: {bulkSignupSummary.sentSubscriberCount}</span>
+                      <span>Skipped: {bulkSignupSummary.skippedSubscriberCount}</span>
+                      <span>Email: {bulkSignupSummary.emailSentCount}</span>
+                      <span>SMS: {bulkSignupSummary.smsSentCount}</span>
+                      <span>Errors: {bulkSignupSummary.errorCount}</span>
+                      <span>Status: {bulkSignupSummary.stopped ? 'stopped' : bulkSignupSummary.done ? 'done' : 'running'}</span>
+                    </div>
+                    {bulkSignupSummary.errors.length ? (
+                      <div className="bulk-signup-errors" aria-label="Recent bulk signup notification errors">
+                        {bulkSignupSummary.errors.map((error, index) => (
+                          <span key={`${error.subscriberId || 'error'}-${index}`}>
+                            {formatAdminValue(error.subscriberId)}: {formatAdminValue(error.error)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </section>
+
               <div className="admin-summary-grid" aria-label="Subscriber summary">
                 <span>Total: {subscriberSummary.total}</span>
                 <span>Active: {subscriberSummary.active}</span>
@@ -5220,6 +5392,7 @@ function AdminTestAlertPage() {
                                   type="button"
                                   disabled={
                                     Boolean(subscriberNotifyId) ||
+                                    bulkSignupRunning ||
                                     Boolean(getSubscriberSignupNotificationDisabledReason(subscriber))
                                   }
                                   title={getSubscriberSignupNotificationDisabledReason(subscriber) || undefined}

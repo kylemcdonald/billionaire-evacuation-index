@@ -1064,6 +1064,54 @@ html.emergency-color-scheme .map-control-button:hover:not(:disabled) {
   font-size: 13px;
 }
 
+.bulk-signup-card {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #cccccc;
+  background: #ffffff;
+}
+
+.bulk-signup-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bulk-signup-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.bulk-signup-heading p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.bulk-signup-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bulk-signup-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.bulk-signup-errors {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: #990000;
+}
+
+.bulk-signup-errors span {
+  overflow-wrap: anywhere;
+}
+
 .subscriber-chart-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1945,6 +1993,7 @@ html.emergency-color-scheme .map-control-button:hover:not(:disabled) {
   }
 
   .flight-list li,
+  .admin-summary-grid,
   .messaging-status-grid,
   .map-hover-grid {
     grid-template-columns: 1fr;
