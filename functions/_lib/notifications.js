@@ -90,7 +90,26 @@ async function appendCustomerPortalLink(env, subscriber, messageText) {
   return `${messageText}\n\nManage your notification settings: ${portalUrl}`;
 }
 
-async function sendEmail(env, { to, subject, text }) {
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatHtmlParagraphs(lines) {
+  return lines
+    .join("\n")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("\n");
+}
+
+async function sendEmail(env, { to, subject, text, html = null }) {
   const apiKey = String(env.SENDGRID_API_KEY || "").trim();
   const fromEmail = String(env.SENDGRID_FROM_EMAIL || "").trim();
   if (!apiKey || !fromEmail) {
@@ -119,6 +138,14 @@ async function sendEmail(env, { to, subject, text }) {
           type: "text/plain",
           value: text,
         },
+        ...(html
+          ? [
+              {
+                type: "text/html",
+                value: html,
+              },
+            ]
+          : []),
       ],
     }),
   });
@@ -137,13 +164,13 @@ async function sendSms(env, { to, text }) {
   return sendTelnyxMessage(env, { to, text });
 }
 
-async function sendDelivery(env, { alertId, subscriberId, channel, destination, text, subject = null }) {
+async function sendDelivery(env, { alertId, subscriberId, channel, destination, text, subject = null, html = null }) {
   const destinationHash = await contactHash(env, channel === "sms" ? "phone" : channel, destination);
 
   try {
     const result =
       channel === "email"
-        ? await sendEmail(env, { to: destination, subject, text })
+        ? await sendEmail(env, { to: destination, subject, text, html })
         : await sendSms(env, { to: destination, text });
     await recordDelivery(env, {
       alertId,
@@ -245,53 +272,75 @@ async function sendAlertToSubscribers(env, { alertId, subscribers, messageText, 
   return summary;
 }
 
-function getSignupConfirmationEmailText(subscriber, managementUrl) {
-  const lines = [
+function formatSignupConfirmationChannelSentence(subscriber) {
+  const hasSupportedSms = Boolean(subscriber.wantsSms && subscriber.phone && isSupportedSmsPhone(subscriber.phone));
+  const hasEmailAlerts = Boolean(subscriber.wantsEmail && subscriber.email);
+
+  if (hasSupportedSms && hasEmailAlerts) {
+    return `When the emergency level reaches 5, we will text you at ${subscriber.phone} and email you at ${subscriber.email}. Hopefully we will not need to send you a message.`;
+  }
+  if (hasEmailAlerts) {
+    return `When the emergency level reaches 5, we will email you at ${subscriber.email}. Hopefully we will not need to send you a message.`;
+  }
+  if (hasSupportedSms) {
+    return `When the emergency level reaches 5, we will text you at ${subscriber.phone}. Hopefully we will not need to send you a message.`;
+  }
+
+  return "Hopefully we will not need to send you a message.";
+}
+
+function getSignupConfirmationEmailContent(subscriber, managementUrl) {
+  const bodyLines = [
     "You're subscribed to Apocalypse Early Warning System.",
     "",
-    "Hopefully we will not need to send you a message.",
+    formatSignupConfirmationChannelSentence(subscriber),
     "",
   ];
   const smsSupported = subscriber.phone ? isSupportedSmsPhone(subscriber.phone) : false;
 
   if (subscriber.wantsSms && subscriber.phone && smsSupported) {
-    lines.push(
-      `We will send SMS alerts to ${subscriber.phone} when the emergency level reaches 5.`,
-      "Reply STOP to stop SMS. Message and data rates may apply.",
-      "",
-    );
+    bodyLines.push("Reply STOP to stop SMS. Message and data rates may apply.", "");
   } else if (subscriber.wantsSms && subscriber.phone) {
     const countryName = getPhoneCountryName(subscriber.phoneCountry);
-    lines.push(
+    bodyLines.push(
       `The number you registered with us is based in ${countryName}.`,
       "We are still working on SMS support outside the US and Canada.",
     );
     if (subscriber.wantsEmail && subscriber.email) {
-      lines.push("In the meantime, we will send you an email alert instead.");
+      bodyLines.push("In the meantime, we will send you an email alert instead.");
     } else {
-      lines.push("In the meantime, use the management link below if you want to add an alert email.");
+      bodyLines.push("In the meantime, use the management link below if you want to add an alert email.");
     }
-    lines.push(
+    bodyLines.push(
       "",
       "For a refund, just ask: ews@kylemcdonald.net",
       `To cancel, use the portal: ${STRIPE_BILLING_PORTAL_URL}`,
       "",
     );
+  } else if (!subscriber.wantsEmail || !subscriber.email) {
+    bodyLines.push("This email is for account management. You are not currently signed up for email alerts.", "");
   }
 
-  if (subscriber.wantsEmail && subscriber.email) {
-    lines.push(`We will send email alerts to ${subscriber.email} when the emergency level reaches 5.`, "");
-  } else {
-    lines.push("This email is for account management. You are not currently signed up for email alerts.", "");
-  }
-
-  lines.push("Manage your notification settings:", managementUrl);
+  const textLines = [...bodyLines, "Manage your notification settings:", managementUrl];
 
   if (subscriber.stripe_customer_id || subscriber.stripeCustomerId) {
-    lines.push("", "For billing-only changes, you can also use Stripe:", STRIPE_BILLING_PORTAL_URL);
+    textLines.push("", "For billing-only changes, you can also use Stripe:", STRIPE_BILLING_PORTAL_URL);
   }
 
-  return lines.join("\n");
+  const text = textLines.join("\n");
+  const html = [
+    formatHtmlParagraphs(bodyLines),
+    `<p><a href="${escapeHtml(managementUrl)}">Manage your notification settings</a></p>`,
+    subscriber.stripe_customer_id || subscriber.stripeCustomerId
+      ? `<p>For billing-only changes, you can also use Stripe:<br><a href="${escapeHtml(
+          STRIPE_BILLING_PORTAL_URL,
+        )}">Stripe billing portal</a></p>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return { text, html };
 }
 
 export async function sendSignupConfirmationToSubscriber(env, subscriberId, options = {}) {
@@ -321,13 +370,14 @@ export async function sendSignupConfirmationToSubscriber(env, subscriberId, opti
 
   const emailDestination = hydrated.accountEmail || hydrated.email;
   if (sendEmailConfirmation && emailDestination) {
-    const emailText = getSignupConfirmationEmailText(hydrated, managementUrl);
+    const emailContent = getSignupConfirmationEmailContent(hydrated, managementUrl);
     const result = await sendDelivery(env, {
       alertId,
       subscriberId: hydrated.id,
       channel: "email",
       destination: emailDestination,
-      text: emailText,
+      text: emailContent.text,
+      html: emailContent.html,
       subject: "Apocalypse EWS subscription confirmation",
     });
     if (result.ok) {

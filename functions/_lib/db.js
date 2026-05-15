@@ -776,7 +776,11 @@ export async function updateSubscriberContactSettings(env, subscriberId, payload
       ? normalizeEmail(payload.accountEmail || payload.email || previous.accountEmail)
       : previous.accountEmail;
   const wantsEmail = Boolean(payload.wantsEmail);
-  const email = wantsEmail ? normalizeEmail(payload.email || payload.accountEmail || accountEmail) : null;
+  const suppliedEmail = normalizeEmail(payload.email);
+  const email =
+    suppliedEmail ||
+    previous.email ||
+    (subscriber.source === "manual" && wantsEmail ? accountEmail : null);
   const phone = normalizePhone(payload.phone);
   const wantsSms = Boolean(payload.wantsSms);
   if (!accountEmail) {
