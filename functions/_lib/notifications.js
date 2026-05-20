@@ -1,25 +1,37 @@
 import {
+  claimRenewalReminder,
   createAlertRecord,
+  getRenewalReminderCandidates,
   getActiveSubscribers,
   getMetaValue,
   getSubscriberById,
   hydrateSubscriberContacts,
+  markRenewalReminderFailed,
+  markRenewalReminderSent,
   recordSubscriberWelcomeSent,
   recordDelivery,
   setMetaValue,
   updateAlertRecord,
+  updateSubscriberFromSubscription,
 } from "./db.js";
 import { contactHash } from "./crypto.js";
 import { getPhoneCountryName, isSupportedSmsPhone } from "./contacts.js";
 import { createAccountManagementLink } from "./customer-portal.js";
 import { HttpError } from "./http.js";
 import { sendTelnyxMessage } from "./telnyx.js";
+import { createStripeInvoicePreview, retrieveStripeSubscription } from "./stripe.js";
 
 const LEVEL5_COOLDOWN_META_KEY = "level5_notification_last_sent_at";
 const DEFAULT_NOTIFICATION_URL = "https://aews.cc/";
 const LEVEL5_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_LEVEL5_NOTIFICATION_CONCURRENCY = 8;
 const DEFAULT_LEVEL5_SMS_MIN_INTERVAL_MS = 250;
+const DEFAULT_RENEWAL_REMINDER_DAYS_BEFORE = 30;
+const DEFAULT_RENEWAL_REMINDER_BATCH_LIMIT = 100;
+const DEFAULT_RENEWAL_REMINDER_CONCURRENCY = 4;
+const RENEWAL_REMINDER_KIND = "renewal_reminder";
+const RENEWAL_REMINDER_SOURCE = "scheduled_renewal_reminder";
+const RENEWAL_REMINDER_SUBJECT_PREFIX = "Your Apocalypse EWS subscription renews on";
 export const SIGNUP_CONFIRMATION_SMS_TEXT =
   "Apocalypse Early Warning System: subscription confirmed. We will only text if emergency level reaches 5. Reply STOP to stop. Msg&data rates may apply.";
 const HOPEFULLY_MESSAGE = "Hopefully we will not need to send you a message.";
@@ -191,6 +203,10 @@ function getManagementLinkText(subscriber) {
     : "Manage your notification settings.";
 }
 
+function countSummary(summary, key, value = 1) {
+  summary[key] = Number(summary[key] || 0) + value;
+}
+
 async function sendEmail(env, { to, subject, text, html = null }) {
   const apiKey = String(env.SENDGRID_API_KEY || "").trim();
   const fromEmail = String(env.SENDGRID_FROM_EMAIL || "").trim();
@@ -356,6 +372,133 @@ function getLevel5EmailContent(env, snapshot, subscriber, managementUrl) {
     .join("\n");
 
   return {
+    text: bodyLines.join("\n"),
+    html,
+  };
+}
+
+function stripeUnixSecondsToIso(value) {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return null;
+  }
+
+  return new Date(numericValue * 1000).toISOString();
+}
+
+function formatRenewalDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value || "");
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "long",
+    timeZone: "America/Los_Angeles",
+  }).format(date);
+}
+
+function formatCurrencyAmount(amount, currency) {
+  const numericAmount = Number(amount);
+  const normalizedCurrency = String(currency || "usd").toUpperCase();
+  if (!Number.isFinite(numericAmount)) {
+    return null;
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: normalizedCurrency,
+  }).format(numericAmount / 100);
+}
+
+function pluralizeInterval(interval) {
+  if (interval === "day") {
+    return "days";
+  }
+  if (interval === "week") {
+    return "weeks";
+  }
+  if (interval === "month") {
+    return "months";
+  }
+  if (interval === "year") {
+    return "years";
+  }
+  return `${interval}s`;
+}
+
+function formatBillingFrequency(subscription) {
+  const price = subscription?.items?.data?.find((item) => item?.price?.recurring)?.price;
+  const recurring = price?.recurring || {};
+  const interval = String(recurring.interval || "").trim();
+  const intervalCount = Math.max(Math.trunc(Number(recurring.interval_count || 1)), 1);
+  if (!interval) {
+    return "annual";
+  }
+  if (intervalCount === 1 && interval === "year") {
+    return "annual";
+  }
+  if (intervalCount === 1 && interval === "month") {
+    return "monthly";
+  }
+  if (intervalCount === 1 && interval === "week") {
+    return "weekly";
+  }
+  if (intervalCount === 1 && interval === "day") {
+    return "daily";
+  }
+
+  return `every ${intervalCount} ${pluralizeInterval(interval)}`;
+}
+
+function isRenewalReminderDue(periodEnd, now, daysBefore) {
+  const periodEndMs = new Date(periodEnd || "").getTime();
+  if (!Number.isFinite(periodEndMs)) {
+    return false;
+  }
+
+  const nowMs = now.getTime();
+  return periodEndMs > nowMs && periodEndMs <= nowMs + daysBefore * 24 * 60 * 60 * 1000;
+}
+
+function getSubscriptionCurrentPeriodEnd(subscription) {
+  return stripeUnixSecondsToIso(
+    subscription?.current_period_end || subscription?.items?.data?.find((item) => item?.current_period_end)?.current_period_end,
+  );
+}
+
+function getRenewalReminderEmailContent({ renewalDate, amount, billingFrequency, managementUrl }) {
+  const subject = `${RENEWAL_REMINDER_SUBJECT_PREFIX} ${renewalDate}`;
+  const bodyLines = [
+    `Your Apocalypse Early Warning System subscription is set to renew on ${renewalDate}.`,
+    "",
+    `Renewal amount: ${amount}`,
+    `Billing frequency: ${billingFrequency}`,
+    "",
+    "No action is needed if you want to stay subscribed.",
+    "",
+    "You can manage your notification settings and billing information here:",
+    managementUrl,
+    "",
+    "Questions: ews@kylemcdonald.net",
+  ];
+  const html = [
+    formatHtmlParagraphs([
+      `Your Apocalypse Early Warning System subscription is set to renew on ${renewalDate}.`,
+      "",
+      `Renewal amount: ${amount}`,
+      `Billing frequency: ${billingFrequency}`,
+      "",
+      "No action is needed if you want to stay subscribed.",
+    ]),
+    `<p><a href="${escapeHtml(managementUrl)}">You can manage your notification settings and billing information here.</a></p>`,
+    formatHtmlParagraphs(["Questions: ews@kylemcdonald.net"]),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    subject,
     text: bodyLines.join("\n"),
     html,
   };
@@ -644,6 +787,245 @@ export async function sendSignupConfirmationToSubscriber(env, subscriberId, opti
     managementUrl,
     ...summary,
   };
+}
+
+function summarizeRenewalReminderResult(summary, result) {
+  if (result.sent) {
+    summary.sentSubscriberCount += 1;
+    summary.emailSentCount += 1;
+    return;
+  }
+
+  if (result.skipped) {
+    summary.skippedSubscriberCount += 1;
+    countSummary(summary.skippedReasons, result.reason || "skipped");
+    return;
+  }
+
+  summary.ok = false;
+  summary.errorCount += 1;
+  if (summary.errors.length < 10) {
+    summary.errors.push({
+      subscriberId: result.subscriberId || null,
+      error: result.error || "Unknown renewal reminder error.",
+    });
+  }
+}
+
+async function sendRenewalReminderToSubscriber(env, { candidate, alertId, now, daysBefore }) {
+  const hydrated = await hydrateSubscriberContacts(env, candidate);
+  const destination = hydrated.accountEmail;
+  if (!destination) {
+    return {
+      sent: false,
+      skipped: true,
+      subscriberId: hydrated.id,
+      reason: "missing_account_email",
+    };
+  }
+
+  let subscription;
+  try {
+    subscription = await retrieveStripeSubscription(env, hydrated.stripe_subscription_id);
+  } catch (error) {
+    return {
+      sent: false,
+      skipped: false,
+      subscriberId: hydrated.id,
+      error: error.message,
+    };
+  }
+
+  await updateSubscriberFromSubscription(env, subscription);
+  const stripeStatus = String(subscription.status || "");
+  const stripePeriodEnd = getSubscriptionCurrentPeriodEnd(subscription);
+  if (!(stripeStatus === "active" || stripeStatus === "trialing")) {
+    return {
+      sent: false,
+      skipped: true,
+      subscriberId: hydrated.id,
+      reason: "stripe_subscription_not_active",
+    };
+  }
+  if (subscription.cancel_at_period_end) {
+    return {
+      sent: false,
+      skipped: true,
+      subscriberId: hydrated.id,
+      reason: "stripe_cancel_at_period_end",
+    };
+  }
+  if (stripePeriodEnd !== hydrated.current_period_end) {
+    return {
+      sent: false,
+      skipped: true,
+      subscriberId: hydrated.id,
+      reason: "stripe_period_changed",
+    };
+  }
+  if (!isRenewalReminderDue(stripePeriodEnd, now, daysBefore)) {
+    return {
+      sent: false,
+      skipped: true,
+      subscriberId: hydrated.id,
+      reason: "outside_renewal_window",
+    };
+  }
+
+  const claimed = await claimRenewalReminder(env, hydrated);
+  if (!claimed) {
+    return {
+      sent: false,
+      skipped: true,
+      subscriberId: hydrated.id,
+      reason: "already_sent_or_processing",
+    };
+  }
+
+  try {
+    const invoicePreview = await createStripeInvoicePreview(env, {
+      subscriptionId: hydrated.stripe_subscription_id,
+    });
+    const amount = formatCurrencyAmount(invoicePreview.amount_due ?? invoicePreview.total, invoicePreview.currency);
+    if (!amount) {
+      throw new Error("Stripe invoice preview did not include a valid renewal amount.");
+    }
+
+    const managementUrl = await createAccountManagementLink(env, hydrated, { baseUrl: getNotificationBaseUrl(env) });
+    const emailContent = getRenewalReminderEmailContent({
+      renewalDate: formatRenewalDate(stripePeriodEnd),
+      amount,
+      billingFrequency: formatBillingFrequency(subscription),
+      managementUrl,
+    });
+    const result = await sendDelivery(env, {
+      alertId,
+      subscriberId: hydrated.id,
+      channel: "email",
+      destination,
+      text: emailContent.text,
+      html: emailContent.html,
+      subject: emailContent.subject,
+    });
+    if (!result.ok) {
+      await markRenewalReminderFailed(env, hydrated, {
+        alertId,
+        error: result.error || "SendGrid did not accept the renewal reminder email.",
+      });
+      return {
+        sent: false,
+        skipped: false,
+        subscriberId: hydrated.id,
+        error: result.error || "SendGrid did not accept the renewal reminder email.",
+      };
+    }
+
+    await markRenewalReminderSent(env, hydrated, {
+      alertId,
+      emailHash: hydrated.account_email_hash || hydrated.email_hash || null,
+    });
+    return {
+      sent: true,
+      skipped: false,
+      subscriberId: hydrated.id,
+    };
+  } catch (error) {
+    await markRenewalReminderFailed(env, hydrated, {
+      alertId,
+      error: error.message,
+    });
+    await recordDeliveryPreparationFailure(env, {
+      alertId,
+      subscriberId: hydrated.id,
+      channel: "email",
+      destination,
+      error,
+    });
+    return {
+      sent: false,
+      skipped: false,
+      subscriberId: hydrated.id,
+      error: error.message,
+    };
+  }
+}
+
+export async function sendRenewalReminderBatch(env, options = {}) {
+  const daysBefore =
+    Number.isFinite(Number(options.daysBefore)) && Number(options.daysBefore) > 0
+      ? Math.trunc(Number(options.daysBefore))
+      : getPositiveIntegerEnv(env, "RENEWAL_REMINDER_DAYS_BEFORE", DEFAULT_RENEWAL_REMINDER_DAYS_BEFORE, {
+          min: 1,
+          max: 90,
+        });
+  const limit =
+    Number.isFinite(Number(options.limit)) && Number(options.limit) > 0
+      ? Math.min(Math.trunc(Number(options.limit)), 500)
+      : getPositiveIntegerEnv(env, "RENEWAL_REMINDER_BATCH_LIMIT", DEFAULT_RENEWAL_REMINDER_BATCH_LIMIT, {
+          min: 1,
+          max: 500,
+        });
+  const concurrency =
+    Number.isFinite(Number(options.concurrency)) && Number(options.concurrency) > 0
+      ? Math.min(Math.trunc(Number(options.concurrency)), 10)
+      : getPositiveIntegerEnv(env, "RENEWAL_REMINDER_CONCURRENCY", DEFAULT_RENEWAL_REMINDER_CONCURRENCY, {
+          min: 1,
+          max: 10,
+        });
+  const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
+  const candidates = await getRenewalReminderCandidates(env, {
+    daysBefore,
+    limit,
+    now,
+  });
+  const summary = {
+    ok: true,
+    sent: candidates.length > 0,
+    status: candidates.length > 0 ? "sent" : "skipped",
+    candidateCount: candidates.length,
+    subscriberCount: candidates.length,
+    sentSubscriberCount: 0,
+    skippedSubscriberCount: 0,
+    emailSentCount: 0,
+    smsSentCount: 0,
+    errorCount: 0,
+    skippedReasons: {},
+    errors: [],
+    daysBefore,
+    limit,
+    concurrency,
+    done: candidates.length < limit,
+  };
+
+  if (!candidates.length) {
+    return summary;
+  }
+
+  const alertId = await createAlertRecord(env, {
+    kind: RENEWAL_REMINDER_KIND,
+    source: options.source || RENEWAL_REMINDER_SOURCE,
+    level: null,
+    slotKey: null,
+    messageText: "Subscription renewal reminder",
+  });
+  summary.alertId = alertId;
+
+  const results = await mapWithConcurrency(candidates, concurrency, (candidate) =>
+    sendRenewalReminderToSubscriber(env, {
+      candidate,
+      alertId,
+      now,
+      daysBefore,
+    }),
+  );
+
+  for (const result of results) {
+    summarizeRenewalReminderResult(summary, result || {});
+  }
+
+  summary.status = summary.errorCount > 0 ? "completed_with_errors" : "sent";
+  await updateAlertRecord(env, alertId, summary);
+  return summary;
 }
 
 export async function maybeSendLevel5Notifications(env, snapshot, { source = "scheduled_refresh" } = {}) {

@@ -128,6 +128,24 @@ export async function updateStripeSubscriptionCancelAtPeriodEnd(env, subscriptio
   ]);
 }
 
+export async function retrieveStripeSubscription(env, subscriptionId) {
+  if (!subscriptionId) {
+    throw new HttpError(400, "Missing Stripe subscription ID.");
+  }
+
+  return stripeRequest(env, "GET", `/subscriptions/${encodeURIComponent(subscriptionId)}`, [
+    ["expand[]", "items.data.price"],
+  ]);
+}
+
+export async function createStripeInvoicePreview(env, { subscriptionId }) {
+  if (!subscriptionId) {
+    throw new HttpError(400, "Missing Stripe subscription ID.");
+  }
+
+  return stripeRequest(env, "POST", "/invoices/create_preview", [["subscription", subscriptionId]]);
+}
+
 function parseStripeSignature(signatureHeader) {
   const parts = String(signatureHeader || "").split(",");
   const parsed = {

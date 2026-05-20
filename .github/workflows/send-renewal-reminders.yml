@@ -1,0 +1,35 @@
+name: Send Renewal Reminders
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 17 * * *"
+
+permissions:
+  contents: read
+
+env:
+  EWS_INTERNAL_ALERT_TOKEN: ${{ secrets.EWS_INTERNAL_ALERT_TOKEN }}
+  EWS_INTERNAL_RENEWAL_REMINDER_URL: https://ews.kylemcdonald.net/api/internal/renewal-reminders
+
+concurrency:
+  group: send-renewal-reminders
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Send renewal reminder batch
+        run: |
+          if [ -z "${EWS_INTERNAL_ALERT_TOKEN}" ]; then
+            echo "Skipping renewal reminders because EWS_INTERNAL_ALERT_TOKEN is not configured."
+            exit 0
+          fi
+
+          curl -fsS -X POST "${EWS_INTERNAL_RENEWAL_REMINDER_URL}" \
+            -H "Authorization: Bearer ${EWS_INTERNAL_ALERT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data '{"limit":100,"concurrency":4}'

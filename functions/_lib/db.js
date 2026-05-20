@@ -949,6 +949,173 @@ export async function markStripeSubscriptionCancelAtPeriodEnd(env, subscriptionI
   return result.meta?.changes || 0;
 }
 
+export async function getRenewalReminderCandidates(env, options = {}) {
+  const daysBefore = Math.trunc(Number(options.daysBefore || 30));
+  const limit = Math.min(Math.max(Math.trunc(Number(options.limit || 100)), 1), 500);
+  const now = options.now instanceof Date ? options.now : new Date(options.now || Date.now());
+  const nowEpoch = Math.floor(now.getTime() / 1000);
+  const windowEndEpoch = nowEpoch + Math.max(daysBefore, 1) * 24 * 60 * 60;
+  const { results } = await getDb(env)
+    .prepare(
+      `
+        SELECT *
+        FROM notification_signups s
+        WHERE s.status = ?
+          AND s.source = 'stripe'
+          AND s.stripe_subscription_id IS NOT NULL
+          AND s.current_period_end IS NOT NULL
+          AND s.stripe_cancel_at_period_end = 0
+          AND CAST(COALESCE(strftime('%s', s.current_period_end), '0') AS INTEGER) > ?
+          AND CAST(COALESCE(strftime('%s', s.current_period_end), '0') AS INTEGER) <= ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM notification_renewal_reminders r
+            WHERE r.stripe_subscription_id = s.stripe_subscription_id
+              AND r.current_period_end = s.current_period_end
+              AND r.status = 'sent'
+          )
+        ORDER BY
+          CAST(COALESCE(strftime('%s', s.current_period_end), '0') AS INTEGER) ASC,
+          s.created_at ASC,
+          s.id ASC
+        LIMIT ?
+      `,
+    )
+    .bind(SUBSCRIBER_STATUS.ACTIVE, nowEpoch, windowEndEpoch, limit)
+    .all();
+
+  return results || [];
+}
+
+export async function claimRenewalReminder(env, subscriber, options = {}) {
+  const subscriptionId = subscriber?.stripe_subscription_id || subscriber?.stripeSubscriptionId || null;
+  const currentPeriodEnd = subscriber?.current_period_end || subscriber?.currentPeriodEnd || null;
+  if (!subscriber?.id || !subscriptionId || !currentPeriodEnd) {
+    return false;
+  }
+
+  const timestamp = nowIso();
+  const insert = await getDb(env)
+    .prepare(
+      `
+        INSERT INTO notification_renewal_reminders (
+          id,
+          subscriber_id,
+          stripe_subscription_id,
+          current_period_end,
+          status,
+          attempt_count,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, 'processing', 1, ?, ?)
+        ON CONFLICT(stripe_subscription_id, current_period_end) DO NOTHING
+      `,
+    )
+    .bind(crypto.randomUUID(), subscriber.id, subscriptionId, currentPeriodEnd, timestamp, timestamp)
+    .run();
+
+  if (Number(insert.meta?.changes || 0) > 0) {
+    return true;
+  }
+
+  const staleMs = Math.max(Number(options.staleMs || 60 * 60 * 1000), 60 * 1000);
+  const staleBeforeEpoch = Math.floor((Date.now() - staleMs) / 1000);
+  const retry = await getDb(env)
+    .prepare(
+      `
+        UPDATE notification_renewal_reminders
+        SET
+          subscriber_id = ?,
+          status = 'processing',
+          attempt_count = attempt_count + 1,
+          error = NULL,
+          updated_at = ?
+        WHERE stripe_subscription_id = ?
+          AND current_period_end = ?
+          AND (
+            status = 'failed'
+            OR (
+              status = 'processing'
+              AND CAST(COALESCE(strftime('%s', updated_at), '0') AS INTEGER) <= ?
+            )
+          )
+      `,
+    )
+    .bind(subscriber.id, timestamp, subscriptionId, currentPeriodEnd, staleBeforeEpoch)
+    .run();
+
+  return Number(retry.meta?.changes || 0) > 0;
+}
+
+export async function markRenewalReminderSent(env, subscriber, details = {}) {
+  const subscriptionId = subscriber?.stripe_subscription_id || subscriber?.stripeSubscriptionId || null;
+  const currentPeriodEnd = subscriber?.current_period_end || subscriber?.currentPeriodEnd || null;
+  if (!subscriptionId || !currentPeriodEnd) {
+    return 0;
+  }
+
+  const timestamp = nowIso();
+  const result = await getDb(env)
+    .prepare(
+      `
+        UPDATE notification_renewal_reminders
+        SET
+          alert_id = ?,
+          email_hash = ?,
+          status = 'sent',
+          error = NULL,
+          sent_at = ?,
+          updated_at = ?
+        WHERE stripe_subscription_id = ?
+          AND current_period_end = ?
+      `,
+    )
+    .bind(
+      details.alertId || null,
+      details.emailHash || subscriber.account_email_hash || subscriber.email_hash || null,
+      timestamp,
+      timestamp,
+      subscriptionId,
+      currentPeriodEnd,
+    )
+    .run();
+
+  return result.meta?.changes || 0;
+}
+
+export async function markRenewalReminderFailed(env, subscriber, details = {}) {
+  const subscriptionId = subscriber?.stripe_subscription_id || subscriber?.stripeSubscriptionId || null;
+  const currentPeriodEnd = subscriber?.current_period_end || subscriber?.currentPeriodEnd || null;
+  if (!subscriptionId || !currentPeriodEnd) {
+    return 0;
+  }
+
+  const result = await getDb(env)
+    .prepare(
+      `
+        UPDATE notification_renewal_reminders
+        SET
+          alert_id = ?,
+          status = 'failed',
+          error = ?,
+          updated_at = ?
+        WHERE stripe_subscription_id = ?
+          AND current_period_end = ?
+      `,
+    )
+    .bind(
+      details.alertId || null,
+      details.error ? String(details.error).slice(0, 1000) : null,
+      nowIso(),
+      subscriptionId,
+      currentPeriodEnd,
+    )
+    .run();
+
+  return result.meta?.changes || 0;
+}
+
 export async function cancelManualSubscriber(env, subscriberId) {
   const timestamp = nowIso();
   const result = await getDb(env)
