@@ -3533,6 +3533,15 @@ function compareMessageHistoryAscending(left, right) {
   return String(left?.id || '').localeCompare(String(right?.id || ''))
 }
 
+function compareMessageHistoryDescending(left, right) {
+  const timeDiff = getMessageHistoryTimestamp(right) - getMessageHistoryTimestamp(left)
+  if (timeDiff !== 0) {
+    return timeDiff
+  }
+
+  return String(right?.id || '').localeCompare(String(left?.id || ''))
+}
+
 function getSmsConversationMessages(messages) {
   if (!Array.isArray(messages)) {
     return []
@@ -3544,7 +3553,18 @@ function getSmsConversationMessages(messages) {
     .sort(compareMessageHistoryAscending)
 }
 
-function formatSmsDeliveryStatus(message) {
+function getEmailHistoryMessages(messages) {
+  if (!Array.isArray(messages)) {
+    return []
+  }
+
+  return messages
+    .filter((message) => String(message.channel || '').toLowerCase() === 'email' && message.direction === 'outbound')
+    .slice()
+    .sort(compareMessageHistoryDescending)
+}
+
+function formatMessageDeliveryStatus(message) {
   if (message?.error) {
     return 'Failed'
   }
@@ -3553,8 +3573,21 @@ function formatSmsDeliveryStatus(message) {
   return formatMessageHistoryLabel(status || 'sent')
 }
 
-function isSmsDeliveryError(message) {
+function isMessageDeliveryError(message) {
   return Boolean(message?.error || ['failed', 'undelivered'].includes(String(message?.status || '').toLowerCase()))
+}
+
+function formatEmailSubject(message) {
+  return String(message?.subject || '').trim() || '(no subject)'
+}
+
+function formatEmailPreview(message) {
+  const text = String(message?.messageText || '').replace(/\s+/g, ' ').trim()
+  if (!text) {
+    return 'No email body recorded.'
+  }
+
+  return text.length > 220 ? `${text.slice(0, 217)}...` : text
 }
 
 function createEmptySubscriberSummary() {
@@ -4769,6 +4802,7 @@ function AdminTestAlertPage() {
   }
 
   const smsConversationMessages = getSmsConversationMessages(messageHistory?.messages)
+  const emailHistoryMessages = getEmailHistoryMessages(messageHistory?.messages)
   const canTextReply = Boolean(messageHistory?.subscriber?.phone)
   const replyCharactersRemaining = ADMIN_REPLY_MAX_LENGTH - replyText.length
   const replyDisabled = replySubmitting || !canTextReply || !replyText.trim() || replyText.length > ADMIN_REPLY_MAX_LENGTH
@@ -4964,7 +4998,7 @@ function AdminTestAlertPage() {
                 <div className="sms-conversation" aria-label="SMS conversation">
                   {smsConversationMessages.map((message) => {
                     const isOutbound = message.direction === 'outbound'
-                    const deliveryStatus = formatSmsDeliveryStatus(message)
+                    const deliveryStatus = formatMessageDeliveryStatus(message)
                     return (
                       <article
                         className={`sms-message-row ${isOutbound ? 'sms-message-outbound' : 'sms-message-inbound'}`}
@@ -4984,7 +5018,7 @@ function AdminTestAlertPage() {
                           {message.error ? <em>{message.error}</em> : null}
                         </div>
                         {isOutbound ? (
-                          <span className={`sms-delivery-status ${isSmsDeliveryError(message) ? 'sms-delivery-status-error' : ''}`}>
+                          <span className={`sms-delivery-status ${isMessageDeliveryError(message) ? 'sms-delivery-status-error' : ''}`}>
                             {deliveryStatus}
                           </span>
                         ) : null}
@@ -4994,6 +5028,45 @@ function AdminTestAlertPage() {
                 </div>
               ) : messageHistory && !historyLoading ? (
                 <p className="empty-state">No SMS message history found for this subscriber.</p>
+              ) : null}
+
+              {messageHistory && !historyLoading ? (
+                <section className="gmail-history" aria-labelledby="email-history-title">
+                  <div className="gmail-history-toolbar">
+                    <h3 id="email-history-title">Sent Email History</h3>
+                    <span>{emailHistoryMessages.length}</span>
+                  </div>
+                  {emailHistoryMessages.length ? (
+                    <div className="gmail-message-list">
+                      {emailHistoryMessages.map((message) => (
+                        <article className="gmail-message-row" key={`${message.direction}-${message.id}`} title={formatMessageHistoryTime(message.occurredAt)}>
+                          <div className="gmail-sender-avatar" aria-hidden="true">
+                            A
+                          </div>
+                          <div className="gmail-message-main">
+                            <div className="gmail-message-header">
+                              <strong>Apocalypse EWS</strong>
+                              <span>to {formatAdminValue(messageHistory.subscriber?.email || messageHistory.subscriber?.accountEmail)}</span>
+                            </div>
+                            <p>
+                              <strong>{formatEmailSubject(message)}</strong>
+                              <span>{formatEmailPreview(message)}</span>
+                            </p>
+                            {message.error ? <em>{message.error}</em> : null}
+                          </div>
+                          <div className="gmail-message-meta">
+                            <time dateTime={message.occurredAt || undefined}>{formatMessageHistoryTime(message.occurredAt)}</time>
+                            <span className={isMessageDeliveryError(message) ? 'gmail-status gmail-status-error' : 'gmail-status'}>
+                              {formatMessageDeliveryStatus(message)}
+                            </span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="empty-state">No sent email history found for this subscriber.</p>
+                  )}
+                </section>
               ) : null}
 
               {messageHistory?.subscriber ? (
