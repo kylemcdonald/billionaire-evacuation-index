@@ -3846,6 +3846,8 @@ function getSubscriberFields(subscriber) {
     ['lastDeliveryAt', subscriber.lastDeliveryAt],
     ['smsReplyCount', subscriber.smsReplyCount],
     ['lastSmsReplyAt', subscriber.lastSmsReplyAt],
+    ['adminHistoryViewedAt', subscriber.adminHistoryViewedAt],
+    ['hasUnreadSmsReplies', subscriber.hasUnreadSmsReplies],
   ]
 }
 
@@ -5680,9 +5682,10 @@ function AdminTestAlertPage() {
                       </thead>
                       <tbody>
                         {subscriberRecords.map((subscriber) => (
-                          <tr key={subscriber.id}>
+                          <tr key={subscriber.id} className={subscriber.hasUnreadSmsReplies ? 'subscriber-unread-sms-row' : undefined}>
                             <td>
                               <strong>{formatAdminValue(subscriber.accountEmail || subscriber.email || subscriber.phone)}</strong>
+                              {subscriber.hasUnreadSmsReplies ? <span className="subscriber-unread-badge">Unread SMS reply</span> : null}
                               <span>Alert: {formatAdminValue(subscriber.email)}</span>
                               <span>{formatAdminValue(subscriber.email && subscriber.phone ? subscriber.phone : null)}</span>
                               <span>{subscriber.id}</span>
@@ -5710,6 +5713,7 @@ function AdminTestAlertPage() {
                               <span>Errors: {formatAdminValue(subscriber.deliveryErrorCount)}</span>
                               <span>Replies: {formatAdminValue(subscriber.smsReplyCount)}</span>
                               <span>Last reply: {formatAdminValue(subscriber.lastSmsReplyAt)}</span>
+                              <span>Last view: {formatAdminValue(subscriber.adminHistoryViewedAt)}</span>
                             </td>
                             <td>
                               <div className="subscriber-actions">

@@ -1719,6 +1719,16 @@ function mergeSmsReplyStats(row, stats = {}) {
   };
 }
 
+function hasUnreadSmsReplies(row) {
+  const lastReplyAt = String(row.last_sms_reply_at || "");
+  if (!lastReplyAt) {
+    return false;
+  }
+
+  const lastViewedAt = String(row.admin_history_viewed_at || "");
+  return !lastViewedAt || lastReplyAt > lastViewedAt;
+}
+
 function buildSmsReplyExistsSql(subscriberAlias = "s") {
   return `EXISTS (
           SELECT 1
@@ -1827,6 +1837,8 @@ async function mapAdminSubscriberRow(env, row, options = {}) {
     lastDeliveryAt: row.last_delivery_at,
     smsReplyCount: Number(row.sms_reply_count || 0),
     lastSmsReplyAt: row.last_sms_reply_at,
+    adminHistoryViewedAt: row.admin_history_viewed_at,
+    hasUnreadSmsReplies: hasUnreadSmsReplies(row),
     managementUrl,
   };
 }
@@ -1913,6 +1925,19 @@ export async function getAdminSubscriberMessageHistory(env, subscriberId, option
   if (!subscriber) {
     throw new HttpError(404, "Subscriber not found.");
   }
+
+  const historyViewedAt = nowIso();
+  await getDb(env)
+    .prepare(
+      `
+        UPDATE notification_signups
+        SET admin_history_viewed_at = ?
+        WHERE id = ?
+      `,
+    )
+    .bind(historyViewedAt, subscriber.id)
+    .run();
+  subscriber.admin_history_viewed_at = historyViewedAt;
 
   const limit = clampHistoryLimit(options.limit);
   const smsReplyStatsBySubscriber = await getSmsReplyStatsForSubscriberRows(env, [subscriber]);

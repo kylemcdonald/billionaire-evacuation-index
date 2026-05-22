@@ -1287,6 +1287,27 @@ html.emergency-color-scheme .map-control-button:hover:not(:disabled) {
   overflow-wrap: anywhere;
 }
 
+.subscriber-unread-sms-row td {
+  border-top-color: #b26a00;
+  border-bottom-color: #b26a00;
+  background: #fff8e1;
+}
+
+.subscriber-unread-sms-row td:first-child {
+  border-left: 4px solid #b26a00;
+}
+
+.subscriber-unread-badge {
+  width: fit-content;
+  margin: 4px 0;
+  padding: 2px 6px;
+  border: 1px solid #b26a00;
+  background: #ffffff;
+  color: #7a4a00;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .subscriber-table td > strong,
 .subscriber-table td > span {
   display: block;
