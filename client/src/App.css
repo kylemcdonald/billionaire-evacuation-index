@@ -1517,9 +1517,23 @@ html.emergency-color-scheme .map-control-button:hover:not(:disabled) {
   flex-wrap: wrap;
 }
 
-.sms-reply-count {
+.sms-reply-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
   color: #555555;
   font-size: 12px;
+}
+
+.sms-segment-estimate {
+  color: #3c4043;
+  font-weight: 700;
+}
+
+.sms-reply-count {
+  color: inherit;
+  font-size: inherit;
 }
 
 .sms-reply-count-error {

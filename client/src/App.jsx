@@ -45,6 +45,10 @@ const SUBSCRIBERS_PER_PAGE = 20
 const SUBSCRIPTION_GROSS_DOLLARS = 5
 const MESSAGE_HISTORY_POLL_INTERVAL_MS = 15_000
 const ADMIN_REPLY_MAX_LENGTH = 1600
+const GSM7_SINGLE_SEGMENT_LIMIT = 160
+const GSM7_CONCATENATED_SEGMENT_LIMIT = 153
+const UNICODE_SINGLE_SEGMENT_LIMIT = 70
+const UNICODE_CONCATENATED_SEGMENT_LIMIT = 67
 const ADMIN_EMAIL_REPLY_SUBJECT_MAX_LENGTH = 200
 const ADMIN_EMAIL_REPLY_BODY_MAX_LENGTH = 10000
 const PHONE_VALIDATION_MESSAGE = 'Enter a valid phone number. Use 10 digits for US/Canada, or + and country code for international numbers.'
@@ -3676,6 +3680,69 @@ function formatMessageCarrierInfo(message) {
   return [carrier, lineType].filter(Boolean).join(' · ')
 }
 
+const GSM7_BASIC_CODE_POINTS = new Set([
+  10, 13, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+  58, 59, 60, 61, 62, 63, 64, 95, 0xa1, 0xa3, 0xa4, 0xa5, 0xa7, 0xbf, 0xc4,
+  0xc5, 0xc6, 0xc7, 0xc9, 0xd1, 0xd6, 0xd8, 0xdc, 0xdf, 0xe0, 0xe4, 0xe5,
+  0xe6, 0xe8, 0xe9, 0xec, 0xf1, 0xf2, 0xf6, 0xf8, 0xf9, 0xfc, 0x394, 0x398,
+  0x393, 0x39b, 0x39e, 0x3a0, 0x3a3, 0x3a6, 0x3a8, 0x3a9,
+])
+for (let codePoint = 48; codePoint <= 57; codePoint += 1) {
+  GSM7_BASIC_CODE_POINTS.add(codePoint)
+}
+for (let codePoint = 65; codePoint <= 90; codePoint += 1) {
+  GSM7_BASIC_CODE_POINTS.add(codePoint)
+}
+for (let codePoint = 97; codePoint <= 122; codePoint += 1) {
+  GSM7_BASIC_CODE_POINTS.add(codePoint)
+}
+
+const GSM7_EXTENDED_CODE_POINTS = new Set([12, 91, 92, 93, 94, 123, 124, 125, 126, 0x20ac])
+
+function countGsm7Units(text) {
+  let units = 0
+  for (const character of text) {
+    const codePoint = character.codePointAt(0)
+    if (GSM7_BASIC_CODE_POINTS.has(codePoint)) {
+      units += 1
+    } else if (GSM7_EXTENDED_CODE_POINTS.has(codePoint)) {
+      units += 2
+    } else {
+      return null
+    }
+  }
+
+  return units
+}
+
+function countSmsSegments(units, singleSegmentLimit, concatenatedSegmentLimit) {
+  if (!units) {
+    return 0
+  }
+
+  return Math.ceil(units / (units <= singleSegmentLimit ? singleSegmentLimit : concatenatedSegmentLimit))
+}
+
+function getSmsSegmentEstimate(value) {
+  const text = String(value || '')
+  const gsm7Units = countGsm7Units(text)
+  if (gsm7Units !== null) {
+    return {
+      encoding: 'GSM-7',
+      segments: countSmsSegments(gsm7Units, GSM7_SINGLE_SEGMENT_LIMIT, GSM7_CONCATENATED_SEGMENT_LIMIT),
+    }
+  }
+
+  return {
+    encoding: 'Unicode',
+    segments: countSmsSegments(text.length, UNICODE_SINGLE_SEGMENT_LIMIT, UNICODE_CONCATENATED_SEGMENT_LIMIT),
+  }
+}
+
+function formatSmsSegmentEstimate(estimate) {
+  return `${estimate.encoding} · ${estimate.segments} ${estimate.segments === 1 ? 'segment' : 'segments'}`
+}
+
 function formatEmailSubject(message) {
   return String(message?.subject || '').trim() || '(no subject)'
 }
@@ -4978,6 +5045,7 @@ function AdminTestAlertPage() {
   const canTextReply = Boolean(messageHistory?.subscriber?.phone)
   const canEmailReply = Boolean(messageHistory?.subscriber?.email || messageHistory?.subscriber?.accountEmail)
   const replyCharactersRemaining = ADMIN_REPLY_MAX_LENGTH - replyText.length
+  const replySegmentEstimate = getSmsSegmentEstimate(replyText)
   const replyDisabled = replySubmitting || !canTextReply || !replyText.trim() || replyText.length > ADMIN_REPLY_MAX_LENGTH
   const emailReplyBodyCharactersRemaining = ADMIN_EMAIL_REPLY_BODY_MAX_LENGTH - emailReplyBody.length
   const emailReplyDisabled =
@@ -5243,8 +5311,16 @@ function AdminTestAlertPage() {
                         <button className="signup-submit" type="submit" disabled={replyDisabled}>
                           {replySubmitting ? 'Sending...' : 'Send Reply'}
                         </button>
-                        <span className={replyCharactersRemaining < 0 ? 'sms-reply-count sms-reply-count-error' : 'sms-reply-count'}>
-                          {replyCharactersRemaining}
+                        <span className="sms-reply-meta">
+                          <span className="sms-segment-estimate" title="Estimated encoding and SMS segments">
+                            {formatSmsSegmentEstimate(replySegmentEstimate)}
+                          </span>
+                          <span
+                            className={replyCharactersRemaining < 0 ? 'sms-reply-count sms-reply-count-error' : 'sms-reply-count'}
+                            title="Characters remaining before the provider request limit"
+                          >
+                            {replyCharactersRemaining} chars left
+                          </span>
                         </span>
                       </div>
                       {!canTextReply ? (
